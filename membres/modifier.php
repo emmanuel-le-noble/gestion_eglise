@@ -173,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (function_exists('enregistrer_log')) {
                 $id_operateur = $_SESSION['user_id'] ?? null;
                 $details_log = "Mise à jour des informations du membre : $nom $prenoms (ID: #$id)";
-                $enregistrer = enregistrer_log($pdo, "Modification", $details_log, $id_operateur);
+                enregistrer_log($pdo, "Modification", $details_log, $id_operateur);
             }
             
             // Re-charger les données
