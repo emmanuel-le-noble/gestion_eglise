@@ -55,6 +55,9 @@ $total_lois = $pdo->query("SELECT COUNT(*) FROM lois_eglise")->fetchColumn();
 // 6. Nombre total de comptes utilisateurs actifs dans le système
 $total_utilisateurs = $pdo->query("SELECT COUNT(*) FROM utilisateurs WHERE statut = 'actif'")->fetchColumn();
 
+// 7. Nombre total d'actions loggées (Nouveauté pour l'indicateur du journal)
+$total_logs = $pdo->query("SELECT COUNT(*) FROM logs_systeme")->fetchColumn();
+
 $page_title = "Tableau de bord de l'administration";
 require_once '../includes/header.php';
 ?>
@@ -65,8 +68,9 @@ require_once '../includes/header.php';
         <p class="text-muted small m-0">Suivi stratégique des départements, de la planification annuelle, de la sécurité et des règles communautaires.</p>
     </div>
 
+    <!-- Section des Indicateurs (Passage à 6 colonnes fluides sur XL) -->
     <div class="row g-3 mb-4">
-        <div class="col-6 col-md-4 col-xl-2.4 style-col-5">
+        <div class="col-6 col-sm-4 col-xl-2">
             <div class="card border-0 shadow-sm bg-white p-3 h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="small fw-bold text-muted uppercase">Départements</span>
@@ -74,28 +78,28 @@ require_once '../includes/header.php';
                 </div>
                 <h3 class="fw-bold m-0 text-dark"><?= $total_comites ?></h3>
                 <?php if($comites_vacants > 0): ?>
-                    <span class="text-danger fw-semibold" style="font-size: 0.75rem;"><i class="fa-solid fa-triangle-exclamation me-1"></i><?= $comites_vacants ?> Poste(s) vacant(s)</span>
+                    <span class="text-danger fw-semibold" style="font-size: 0.75rem;"><i class="fa-solid fa-triangle-exclamation me-1"></i><?= $comites_vacants ?> Vacant(s)</span>
                 <?php else: ?>
                     <span class="text-success fw-semibold" style="font-size: 0.75rem;"><i class="fa-solid fa-circle-check me-1"></i>Tous pourvus</span>
                 <?php endif; ?>
             </div>
         </div>
 
-        <div class="col-6 col-md-4 col-xl-2.4 style-col-5">
+        <div class="col-6 col-sm-4 col-xl-2">
             <div class="card border-0 shadow-sm bg-white p-3 h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="small fw-bold text-muted uppercase">Plan d'action (<?= $annee_actuelle ?>)</span>
                     <div class="bg-light-success rounded px-2 py-1"><i class="fa-solid fa-calendar-check text-success small"></i></div>
                 </div>
-                <h3 class="fw-bold m-0 text-dark"><?= $total_actions ?> <span class="text-muted fs-6 font-normal">projets</span></h3>
-                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-check-double me-1 text-success"></i><?= $actions_realisees ?> finalisés</span>
+                <h3 class="fw-bold m-0 text-dark"><?= $total_actions ?> <span class="text-muted fs-6 small">projet(s)</span></h3>
+                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-check-double me-1 text-success"></i><?= $actions_realisees ?> finis</span>
             </div>
         </div>
 
-        <div class="col-6 col-md-4 col-xl-2.4 style-col-5">
+        <div class="col-6 col-sm-4 col-xl-2">
             <div class="card border-0 shadow-sm bg-white p-3 h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <span class="small fw-bold text-muted uppercase">Exécution globale</span>
+                    <span class="small fw-bold text-muted uppercase">Exécution</span>
                     <div class="bg-light-warning rounded px-2 py-1"><i class="fa-solid fa-chart-line text-warning small"></i></div>
                 </div>
                 <h3 class="fw-bold m-0 text-dark"><?= $taux_avancement ?>%</h3>
@@ -105,32 +109,43 @@ require_once '../includes/header.php';
             </div>
         </div>
 
-        <div class="col-6 col-md-4 col-xl-2.4 style-col-5">
+        <div class="col-6 col-sm-4 col-xl-2">
             <div class="card border-0 shadow-sm bg-white p-3 h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="small fw-bold text-muted uppercase">Textes & lois</span>
                     <div class="bg-light-dark rounded px-2 py-1"><i class="fa-solid fa-gavel text-dark small"></i></div>
                 </div>
                 <h3 class="fw-bold m-0 text-dark"><?= $total_lois ?></h3>
-                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-book-open me-1"></i>Articles au registre</span>
+                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-book-open me-1"></i>Articles</span>
             </div>
         </div>
 
-        <div class="col-6 col-md-4 col-xl-2.4 style-col-5">
+        <div class="col-6 col-sm-4 col-xl-2">
             <div class="card border-0 shadow-sm bg-white p-3 h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="small fw-bold text-muted uppercase">Accès Actifs</span>
                     <div class="bg-light-info rounded px-2 py-1"><i class="fa-solid fa-user-lock text-info small"></i></div>
                 </div>
                 <h3 class="fw-bold m-0 text-dark"><?= $total_utilisateurs ?></h3>
-                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-users-gear me-1"></i>Comptes configurés</span>
+                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-users-gear me-1"></i>Comptes</span>
+            </div>
+        </div>
+
+        <!-- NOUVEAU COMPTEUR DANS LES INDICATEURS -->
+        <div class="col-6 col-sm-4 col-xl-2">
+            <div class="card border-0 shadow-sm bg-white p-3 h-100">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="small fw-bold text-muted uppercase">Opérations</span>
+                    <div class="bg-light-secondary rounded px-2 py-1"><i class="fa-solid fa-clock-rotate-left text-secondary small"></i></div>
+                </div>
+                <h3 class="fw-bold m-0 text-dark"><?= $total_logs ?></h3>
+                <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-solid fa-list-check me-1"></i>Logs enregistrés</span>
             </div>
         </div>
     </div>
 
     <h5 class="fw-bold text-secondary text-uppercase mb-3" style="font-size:0.8rem; letter-spacing:0.5px;">Structure & Alignement Annuel</h5>
     <div class="row g-4 mb-5">
-        
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100 bg-white">
                 <div class="card-body p-4 d-flex flex-column justify-content-between">
@@ -208,17 +223,17 @@ require_once '../includes/header.php';
         </div>
     </div>
 
-    <h5 class="fw-bold text-secondary text-uppercase mb-3" style="font-size:0.8rem; letter-spacing:0.5px;">Sécurité & Authentifications</h5>
+    <h5 class="fw-bold text-secondary text-uppercase mb-3" style="font-size:0.8rem; letter-spacing:0.5px;">Sécurité, Traçabilité & Authentifications</h5>
     <div class="row g-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100 bg-white">
                 <div class="card-body p-4 d-flex flex-column justify-content-between">
                     <div>
                         <div class="bg-light text-danger rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 50px; height: 50px;">
                             <i class="fa-solid fa-key fa-lg"></i>
                         </div>
-                        <h5 class="fw-bold text-dark">Rôles & niveaux d'accès</h5>
-                        <p class="text-muted small">Déclarez les différents profils d'utilisateurs requis pour l'administration (Admin, Pasteur, Trésorier). C'est le prérequis obligatoire avant l'ouverture des accès.</p>
+                        <h5 class="fw-bold text-dark">Rôles & Accès</h5>
+                        <p class="text-muted small">Déclarez les différents profils requis pour l'administration (Admin, Pasteur, Trésorier) avant l'ouverture des droits.</p>
                     </div>
                     <div class="mt-3">
                         <a href="roles.php" class="btn btn-outline-danger btn-sm w-100 fw-bold py-2">
@@ -229,15 +244,15 @@ require_once '../includes/header.php';
             </div>
         </div>
 
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100 bg-white">
                 <div class="card-body p-4 d-flex flex-column justify-content-between">
                     <div>
                         <div class="bg-light text-info rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 50px; height: 50px;">
                             <i class="fa-solid fa-users-gear fa-lg"></i>
                         </div>
-                        <h5 class="fw-bold text-dark">Comptes utilisateurs</h5>
-                        <p class="text-muted small">Générez les accès sécurisés des collaborateurs, associez-les à leurs adresses e-mails, attribuez un mot de passe et activez ou révoquez un accès à tout moment.</p>
+                        <h5 class="fw-bold text-dark">Comptes Utilisateurs</h5>
+                        <p class="text-muted small">Générez les accès sécurisés des collaborateurs, associez des e-mails et activez ou révoquez un compte à tout moment.</p>
                     </div>
                     <div class="mt-3">
                         <a href="utilisateurs.php" class="btn btn-outline-info btn-sm w-100 fw-bold py-2">
@@ -248,7 +263,7 @@ require_once '../includes/header.php';
             </div>
         </div>
 
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100 bg-white">
                 <div class="card-body p-4 d-flex flex-column justify-content-between">
                     <div>
@@ -256,11 +271,31 @@ require_once '../includes/header.php';
                             <i class="fa-solid fa-cubes fa-lg"></i>
                         </div>
                         <h5 class="fw-bold text-dark">Matrice des Droits</h5>
-                        <p class="text-muted small">Gérez les habilitations dynamiques directement depuis l'application. Cochez les modules (Cultes, Finances, Mutuelle...) accessibles pour chaque rôle.</p>
+                        <p class="text-muted small">Gérez les habilitations dynamiques. Cochez les modules (Finances, Mutuelle...) autorisés pour chaque profil défini.</p>
                     </div>
                     <div class="mt-3">
                         <a href="matrice_droits.php" class="btn btn-outline-primary btn-sm w-100 fw-bold py-2">
                             Gérer les autorisations <i class="fa-solid fa-chevron-right ms-1 small"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOUVEAU BLOC POUR LE JOURNAL DE BORD -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 bg-white border border-secondary-subtle">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="bg-light text-secondary rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 50px; height: 50px;">
+                            <i class="fa-solid fa-clock-rotate-left fa-lg"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark">Journal de bord</h5>
+                        <p class="text-muted small">Consultez l'historique complet et transparent des actions : qui s'est connecté, qui a ajouté, modifié ou supprimé un élément.</p>
+                    </div>
+                    <div class="mt-3">
+                        <a href="journal.php" class="btn btn-outline-dark btn-sm w-100 fw-bold py-2 shadow-sm">
+                            Ouvrir le Journal <i class="fa-solid fa-arrow-right ms-1 small"></i>
                         </a>
                     </div>
                 </div>
@@ -280,15 +315,8 @@ require_once '../includes/header.php';
 .bg-light-warning { background-color: rgba(255, 193, 7, 0.1); }
 .bg-light-dark { background-color: rgba(33, 37, 41, 0.1); }
 .bg-light-info { background-color: rgba(13, 202, 240, 0.1); }
+.bg-light-secondary { background-color: rgba(108, 117, 125, 0.1); }
 .uppercase { font-size: 0.72rem; letter-spacing: 0.5px; text-transform: uppercase;}
-
-/* Hack CSS Bootstrap propre pour répartir équitablement 5 colonnes sur les résolutions larges */
-@media (min-width: 1200px) {
-    .style-col-5 {
-        flex: 0 0 20% !important;
-        max-width: 20% !important;
-    }
-}
 </style>
 
 <?php require_once '../includes/footer.php'; ?>

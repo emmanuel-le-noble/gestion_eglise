@@ -54,3 +54,21 @@ function securiser_par_module($pdo, $nom_module) {
         }
     }
 }
+
+function enregistrer_log($pdo, $module, $action, $details = null) {
+    try {
+        $sql = "INSERT INTO logs_systeme (utilisateur_id, utilisateur_nom, module, action, details, adresse_ip) 
+                VALUES (:uid, :unom, :mod, :act, :det, :ip)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':uid'  => $_SESSION['user_id'] ?? 0,
+            ':unom' => $_SESSION['user_nom'] ?? 'Système',
+            ':mod'  => $module,
+            ':act'  => $action,
+            ':det'  => $details,
+            ':ip'   => $_SERVER['REMOTE_ADDR'] ?? null
+        ]);
+    } catch (PDOException $e) {
+        // On évite de bloquer l'application si l'écriture du log échoue
+    }
+}
