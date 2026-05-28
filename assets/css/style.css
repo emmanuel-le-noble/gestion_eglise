@@ -1,0 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap');
+
+/* --- CONFIGURATION GLOBALE --- */
+:root {
+    --primary-color: #4e73df;    /* Bleu moderne */
+    --secondary-color: #858796;  /* Gris texte */
+    --success-color: #1cc88a;    /* Vert succès */
+    --bg-light: #f8f9fc;         /* Fond de l'application */
+    --sidebar-bg: #222e3c;       /* Fond sombre Sidebar */
+    --sidebar-width: 250px;
+    --topbar-height: 70px;
+    --transition: all 0.3s ease;
+}
+ 
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: var(--bg-light);
+    color: #333;
+    margin: 0;
+    overflow-x: hidden;
+}
+
+/* --- STRUCTURE (LAYOUT) --- */
+
+/* La Sidebar */
+.sidebar {
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: var(--sidebar-bg);
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1000;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-brand {
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-brand i {
+    margin-right: 10px;
+    color: var(--primary-color);
+}
+
+.sidebar-brand a {
+    text-decoration: none;
+    color: var(--primary-color);
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+    flex-grow: 1;
+}
+
+.sidebar-menu li {
+    padding: 0.2rem 1rem;
+}
+
+
+.sidebar-menu a {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.sidebar-menu a i {
+    width: 25px;
+    margin-right: 10px;
+    font-size: 1.1rem;
+}
+
+.sidebar-menu li.active a, 
+.sidebar-menu a:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+.sidebar-menu li.active a {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Zone Principale (.main) */
+.main {
+    margin-left: var(--sidebar-width);
+    min-height: 100vh !important;
+    transition: var(--transition);
+}
+
+.container-fluid{
+    padding: 1.2rem 2rem;
+}
+
+/* Topbar */
+.navbar {
+    height: var(--topbar-height);
+    z-index: 900;
+}
+
+/* --- COMPOSANTS UI --- */
+
+/* Cartes (Cards) */
+.card {
+    border-radius: 12px;
+    border: none;
+    transition: transform 0.3s ease-in-out;
+}
+
+.card.shadow-sm {
+    box-shadow: 0 .25rem .5rem rgba(0,0,0,.375) !important;
+}
+
+/* Tableaux */
+.table thead th {
+    background-color: #f8f9fc;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: #b7b9cc;
+    border-bottom: 1px solid #e3e6f0;
+}
+
+.table tbody td {
+    padding: 1rem 0.75rem;
+    color: #5a5c69;
+}
+
+/* Badges personnalisés */
+.badge {
+    padding: 0.5em 0.8em;
+    font-weight: 500;
+}
+
+.bg-primary-subtle { background-color: #e0e7ff !important; color: #4338ca !important; }
+.bg-success-subtle { background-color: #dcfce7 !important; color: #15803d !important; }
+.bg-danger-subtle { background-color: #fee2e2 !important; color: #b91c1c !important; }
+
+/* Boutons */
+.btn {
+    border-radius: 8px;
+    padding: 0.5rem 1.2rem;
+    gap : 2px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border: none;
+}
+
+/* Formulaires */
+.form-control, .form-select {
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    border: 1px solid #d1d3e2;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 0 0.2rem rgba(78,115,223,0.25);
+    border-color: var(--primary-color);
+}
+
+footer{
+    margin-top: 2rem;
+}
+
+/* Responsivité Mobile Rapide */
+@media (max-width: 768px) {
+    .sidebar {
+        left: -var(--sidebar-width);
+    }
+    .main {
+        margin-left: 0;
+    }
+    .sidebar.active {
+        left: 0;
+    }
+}

@@ -1,0 +1,335 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap');
+/* --- CONFIGURATION GLOBALE & EFFET LIQUID GLASS --- */
+:root {
+    --primary-color: #3b82f6;    /* Bleu néon plus lumineux pour le mode sombre */
+    --secondary-color: #94a3b8;  /* Gris ardoise clair pour les textes mutés */
+    --success-color: #10b981;    /* Vert émeraude */
+    --fuchsia-color: #d63384;    /* Fuchsia pour les touches d'accentuation */
+    
+    /* Variables de l'effet Verre (Glassmorphism) */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-blur: blur(14px) saturate(180%);
+    
+    --sidebar-width: 255px;
+    --topbar-height: 70px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #0b0f19; /* Fond sombre profond pour faire ressortir le verre */
+    /* Les gradients simulent les formes fluides géantes en arrière-plan */
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(30, 64, 175, 0.25) 0, transparent 45%), 
+        radial-gradient(at 100% 100%, rgba(214, 51, 132, 0.15) 0, transparent 45%);
+    color: #f8fafc; /* Texte principal en blanc cassé */
+    margin: 0;
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
+/* Éléments dynamiques (Blobs) à placer dans le HTML si besoin, ou gérés via le CSS */
+.liquid-blob {
+    position: fixed;
+    width: 450px;
+    height: 450px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(214, 51, 132, 0.15));
+    filter: blur(90px);
+    border-radius: 50%;
+    z-index: -1;
+    animation: floatBlob 25s infinite alternate ease-in-out;
+}
+
+@keyframes floatBlob {
+    0% { transform: translate(-10%, -10%) scale(1); }
+    100% { transform: translate(15%, 15%) scale(1.1); }
+}
+
+/* --- STRUCTURE (LAYOUT) --- */
+
+/* La Sidebar en mode Verre Dépoli */
+.sidebar {
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.03) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border-right: 1px solid var(--glass-border) !important;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1000;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-brand {
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 700;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.sidebar-brand i {
+    margin-right: 10px;
+    color: var(--primary-color);
+}
+
+.sidebar-brand a {
+    text-decoration: none;
+    color: var(--primary-color);
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+    flex-grow: 1;
+}
+
+.sidebar-menu li {
+    padding: 0.2rem 1rem;
+}
+
+.sidebar-menu a {
+    color: #94a3b8;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    transition: var(--transition);
+}
+
+.sidebar-menu a i {
+    width: 25px;
+    margin-right: 10px;
+    font-size: 1.1rem;
+    color: #64748b;
+    transition: color 0.2s ease;
+}
+
+/* État survolé et actif dans la Sidebar */
+.sidebar-menu li.active a, 
+.sidebar-menu a:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.sidebar-menu li.active a {
+    color: #fff !important;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.15) !important;
+    box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.1);
+}
+
+.sidebar-menu li.active a i,
+.sidebar-menu a:hover i {
+    color: var(--primary-color) !important;
+}
+
+/* Zone Principale (.main) */
+.main {
+    margin-left: var(--sidebar-width);
+    min-height: 100vh !important;
+    transition: var(--transition);
+}
+
+.container-fluid {
+    padding: 1.2rem 2rem;
+}
+
+/* Topbar en transparence */
+.navbar {
+    height: var(--topbar-height);
+    z-index: 900;
+    background: rgba(11, 15, 25, 0.5) !important;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+/* --- COMPOSANTS UI --- */
+
+/* Cartes (Cards) Style Verre Flouté */
+.card {
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 16px !important;
+    color: #f8fafc !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card.shadow-sm {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25) !important;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35) !important;
+}
+
+.card-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--glass-border) !important;
+    color: #fff !important;
+}
+
+/* Tableaux Translucides */
+.table {
+    color: #cbd5e1 !important;
+}
+
+.table thead th {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: #94a3b8;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.table tbody td {
+    padding: 1rem 0.75rem;
+    background-color: rgba(255, 255, 255, 0.04) !important;
+    color: #e2e8f0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Enveloppes d'icônes rondes */
+.icon-wrapper {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+/* Bordures de couleurs pour typages des cartes */
+.border-glass-primary { border-left: 4px solid #3b82f6 !important; }
+.border-glass-success { border-left: 4px solid #10b981 !important; }
+.border-glass-warning { border-left: 4px solid #f59e0b !important; }
+.border-glass-danger  { border-left: 4px solid #ef4444 !important; }
+.border-glass-info    { border-left: 4px solid #06b6d4 !important; }
+.border-fuchsia       { border-left: 4px solid var(--fuchsia-color) !important; }
+.text-fuchsia         { color: var(--fuchsia-color) !important; }
+
+/* Badges personnalisés (subtils et transparents) */
+.badge {
+    padding: 0.5em 0.8em;
+    font-weight: 500;
+    border-radius: 6px;
+}
+
+.badge.bg-white { 
+    background-color: rgba(255, 255, 255, 0.08) !important; 
+    color: #cbd5e1 !important; 
+    border: 1px solid var(--glass-border);
+}
+
+.bg-primary-subtle { background-color: rgba(59, 130, 246, 0.15) !important; color: #60a5fa !important; }
+.bg-success-subtle { background-color: rgba(16, 185, 129, 0.15) !important; color: #34d399 !important; }
+.bg-danger-subtle  { background-color: rgba(239, 68, 68, 0.15) !important;  color: #f87171 !important; }
+
+/* Barres de progression */
+.progress { 
+    background-color: rgba(255, 255, 255, 0.1) !important; 
+    border-radius: 10px; 
+}
+
+/* Boutons */
+.btn {
+    border-radius: 8px;
+    padding: 0.5rem 1.2rem;
+    font-weight: 500;
+    transition: var(--transition);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border: none;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+}
+.btn-primary:hover {
+    background-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.btn-dark {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: #fff !important;
+}
+.btn-dark:hover { 
+    background: rgba(255, 255, 255, 0.15) !important; 
+}
+
+.btn-outline-primary { 
+    color: #3b82f6 !important; 
+    border-color: rgba(59, 130, 246, 0.4) !important;
+}
+.btn-outline-primary:hover { 
+    background: rgba(59, 130, 246, 0.1) !important; 
+    color: #fff !important;
+}
+
+/* Formulaires */
+.form-control, .form-select {
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: #fff !important;
+}
+
+.form-control:focus, .form-select:focus {
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+    border-color: var(--primary-color) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Forcer la lisibilité des textes natifs Bootstrap */
+.text-dark { color: #f8fafc !important; }
+.text-muted { color: #94a3b8 !important; }
+
+footer {
+    margin-top: 2rem;
+    border-top: 1px solid var(--glass-border);
+    padding: 1rem 0;
+}
+
+/* Animations */
+.animate-pulse { animation: pulse 2s infinite ease-in-out; }
+@keyframes pulse { 
+    0%, 100% { transform: scale(1); opacity: 1; } 
+    50% { transform: scale(1.08); opacity: 0.5; } 
+}
+
+/* Responsivité Mobile Rapide */
+@media (max-width: 768px) {
+    .sidebar {
+        left: -var(--sidebar-width);
+        background: rgba(11, 15, 25, 0.95) !important; /* Plus opaque sur mobile pour masquer le contenu de derrière */
+    }
+    .main {
+        margin-left: 0;
+    }
+    .sidebar.active {
+        left: 0;
+    }
+}

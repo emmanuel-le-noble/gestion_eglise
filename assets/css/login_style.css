@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap');
+
+* {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', 'Open Sans';
+      text-decoration: none;
+      color: white;
+      
+}
+
+label,input,button{
+	transition: all .3s;
+}
+
+
+.logo, h1, h2, h3{
+    font-family: 'Poppins';
+    color: #333;
+}
+
+body {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+	align-items: center;
+    justify-content: center;
+    background: url(../images/back.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+.warning-msg{
+	background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+	color: red;
+	padding: 1.1em 1.2em;
+	border-radius: 1.1em 0 1.1em 0;
+}
+
+.back{
+    display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+form{
+	background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+	width: 600px;
+	border-radius: 20px;
+	padding: 30px;
+    color: white;
+}
+
+.input-form{
+	display: flex;
+	flex-direction: column-reverse;
+	margin: 3em 2em;
+}
+
+.title-form
+{
+    margin: 0 1em;
+	font-size: 2em;
+    color: white;
+}
+
+label{
+	transform: translate(10px, -15px);
+	cursor: text;
+	transform-origin: left top;
+	position: absolute;
+}
+
+input{
+	padding: 10px;
+	background-color: transparent;
+	border: none;
+	outline: none;
+	border-bottom:2px solid rgb(255, 255, 255);
+}
+
+button{
+	border: none;
+	padding: 10px 17px;
+	margin: 0 2em;
+	background-color: white;
+	color: blue;
+	cursor: pointer;
+	border: 1px solid blue;
+	border-radius: 10px 0 10px 0;
+	font-size: 1em;
+}
+
+button:hover{
+	background-color: blue;
+	color: white;
+	transform: translate(0, 10px);
+}
+
+.submit-form{
+	text-align: right;
+}
+
+input::placeholder{
+	opacity: 0;
+}
+
+input:focus{
+	border-bottom: 2px solid red;
+}
+input:not(:placeholder-shown){
+	border-bottom: 2px solid red;
+}
+
+input:not(:placeholder-shown) ~ label,
+input:focus ~ label{
+	transform: translate(10px, -30px) scale(.8);
+}
+
+.codition-form{
+	margin: 2em 2em;
+	text-align: justify;
+
+}
+
+.btn-condition{
+	text-decoration: none;
+	color: white;
+}
+
+.btn-condition:hover{
+	color: burlywood;
+}
