@@ -7,22 +7,41 @@ securiser_par_module($pdo, 'mutuelle');
 $message = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $membre_id = $_POST['membre_id'];
-    $date_adhesion = $_POST['date_adhesion'];
-    $mise_journaliere = (float)$_POST['mise_journaliere'];
-
-    if ($mise_journaliere >= 0) {
-        try {
-            // Insertion incluant la mise journalière (les frais mensuels se calculent tout seuls en BD)
-            $sql = "INSERT INTO mutuelle_comptes (membre_id, date_adhesion, `mise_journaliere`) VALUES (?, ?, ?)";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$membre_id, $date_adhesion, $mise_journaliere]);
-            $message = "<div class='alert alert-success shadow-sm'><i class='fa-solid fa-circle-check me-2'></i>Le membre a été inscrit à la mutuelle avec succès !</div>";
-        } catch (PDOException $e) {
-            $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Erreur : Ce membre est peut-être déjà inscrit ou les données sont invalides.</div>";
-        }
+    // 1. Protection CSRF : Vérification du jeton de sécurité
+    if (!isset($_POST['csrf_token']) || !function_exists('verifier_token_csrf') || !verifier_token_csrf($_POST['csrf_token'])) {
+        $message = "<div class='alert alert-danger'><i class='fa-solid fa-ban me-2'></i>Erreur de sécurité : Action non autorisée (Échec CSRF).</div>";
     } else {
-        $message = "<div class='alert alert-warning'><i class='fa-solid fa-triangle-exclamation me-2'></i>La mise journalière doit être un montant positif ou égal à zéro.</div>";
+        $membre_id = $_POST['membre_id'];
+        $date_adhesion = $_POST['date_adhesion'];
+        $mise_journaliere = (float)$_POST['mise_journaliere'];
+
+        if ($mise_journaliere >= 0) {
+            try {
+                // Insertion incluant la mise journalière
+                $sql = "INSERT INTO mutuelle_comptes (membre_id, date_adhesion, `mise_journaliere`) VALUES (?, ?, ?)";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$membre_id, $date_adhesion, $mise_journaliere]);
+
+                // 2. Intégration du Log en cas de succès
+                if (function_exists('enregistrer_log')) {
+                    enregistrer_log(
+                        $pdo, 
+                        'Adhésion Mutuelle', 
+                        "Inscription réussie du membre ID #{$membre_id} à la mutuelle. Mise journalière : {$mise_journaliere} FCFA."
+                    );
+                }
+
+                $message = "<div class='alert alert-success shadow-sm'><i class='fa-solid fa-circle-check me-2'></i>Le membre a été inscrit à la mutuelle avec succès !</div>";
+            } catch (PDOException $e) {
+                // Log de l'échec technique (optionnel mais recommandé pour le débug)
+                if (function_exists('enregistrer_log')) {
+                    enregistrer_log($pdo, 'Erreur Mutuelle', "Échec de l'inscription à la mutuelle pour le membre ID #{$membre_id}. Erreur : " . $e->getMessage());
+                }
+                $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Erreur : Ce membre est peut-être déjà inscrit ou les données sont invalides.</div>";
+            }
+        } else {
+            $message = "<div class='alert alert-warning'><i class='fa-solid fa-triangle-exclamation me-2'></i>La mise journalière doit être un montant positif ou égal à zéro.</div>";
+        }
     }
 }
 
@@ -48,6 +67,10 @@ require_once '../includes/header.php';
                     <?= $message ?>
                     
                     <form method="POST">
+                        <?php if (function_exists('generer_token_csrf')): ?>
+                            <input type="hidden" name="csrf_token" value="<?= generer_token_csrf(); ?>">
+                        <?php endif; ?>
+
                         <div class="mb-3">
                             <label class="small fw-bold mb-2">Sélectionner le fidèle</label>
                             <select name="membre_id" class="form-select select2" required>
@@ -117,7 +140,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if(inputMise && inputFrais) {
         inputMise.addEventListener('input', function() {
             const mise = parseFloat(this.value) || 0;
-            // Division par 2 en temps réel (Règle de gestion)
             const frais = mise / 2; 
             inputFrais.value = frais % 1 === 0 ? frais : frais.toFixed(2);
         });

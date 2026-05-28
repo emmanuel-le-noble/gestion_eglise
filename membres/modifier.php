@@ -4,14 +4,13 @@ require_once "../config/database.php";
 require_once "../includes/session.php"; 
 require_once '../includes/helpers.php';
 
-// Toutes les pages du dossier membres contiendront cette ligne :
+// Sécurisation de la page
 securiser_par_module($pdo, 'membres');
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Vérifier si l'utilisateur est connecté
 require_login(); 
 
 $message = "";
@@ -24,7 +23,7 @@ if (!$id) {
     exit;
 }
 
-// Récupération initiale du membre pour le traitement de la photo et la validation
+// Récupération initiale du membre
 $stmt = $pdo->prepare("SELECT * FROM membres WHERE id = ?");
 $stmt->execute([$id]);
 $membre = $stmt->fetch();
@@ -35,37 +34,36 @@ if (!$membre) {
     exit;
 }
 
-// 2. Traitement de la soumission du formulaire (Mise à jour)
+// 2. Traitement de la soumission du formulaire
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // Récupération des données du formulaire
-    $nom = trim($_POST['nom']);
-    $prenoms = trim($_POST['prenoms']);
-    $sexe = $_POST['sexe'];
+    $nom = trim($_POST['nom'] ?? '');
+    $prenoms = trim($_POST['prenoms'] ?? '');
+    $sexe = $_POST['sexe'] ?? '';
     $date_naissance = !empty($_POST['date_naissance']) ? $_POST['date_naissance'] : null;
-    $lieu_naissance = trim($_POST['lieu_naissance']);
-    $profession = trim($_POST['profession']);
-    $eglise_provenance = trim($_POST['eglise_provenance']);
+    $lieu_naissance = trim($_POST['lieu_naissance'] ?? '');
+    $profession = trim($_POST['profession'] ?? '');
+    $eglise_provenance = trim($_POST['eglise_provenance'] ?? '');
     $date_arrivee = !empty($_POST['date_arrivee']) ? $_POST['date_arrivee'] : null;
     
     $baptise = isset($_POST['baptise']) ? 1 : 0;
     $date_bapteme = (!empty($_POST['date_bapteme']) && $baptise) ? $_POST['date_bapteme'] : null;
-    $lieu_bapteme = ($baptise) ? trim($_POST['lieu_bapteme']) : null;
+    $lieu_bapteme = ($baptise) ? trim($_POST['lieu_bapteme'] ?? '') : null;
     $engagement_moral = isset($_POST['engagement_moral']) ? 1 : 0;
-    $groupe_action = $_POST['groupe_action'];
-    $qualite = $_POST['qualite'];
+    $groupe_action = $_POST['groupe_action'] ?? '';
+    $qualite = $_POST['qualite'] ?? '';
     $statut_membre = $_POST['statut'] ?? 'Actif'; 
 
-    $telephone1 = trim($_POST['telephone1']);
-    $telephone2 = trim($_POST['telephone2']);
-    $email = trim($_POST['email']);
-    $quartier = trim($_POST['quartier']);
-    $situation_matrimoniale = $_POST['situation_matrimoniale'];
+    $telephone1 = trim($_POST['telephone1'] ?? '');
+    $telephone2 = trim($_POST['telephone2'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $quartier = trim($_POST['quartier'] ?? '');
+    $situation_matrimoniale = $_POST['situation_matrimoniale'] ?? '';
     $date_mariage = (!empty($_POST['date_mariage']) && $situation_matrimoniale !== 'Célibataire') ? $_POST['date_mariage'] : null;
-    $lieu_mariage = ($situation_matrimoniale !== 'Célibataire') ? trim($_POST['lieu_mariage']) : null;
-    $nom_conjoint = trim($_POST['nom_conjoint']);
-    $nombre_enfants = (int)$_POST['nombre_enfants'];
-    $commentaire = trim($_POST['commentaire']);
+    $lieu_mariage = ($situation_matrimoniale !== 'Célibataire') ? trim($_POST['lieu_mariage'] ?? '') : null;
+    $nom_conjoint = trim($_POST['nom_conjoint'] ?? '');
+    $nombre_enfants = (int)($_POST['nombre_enfants'] ?? 0);
+    $commentaire = trim($_POST['commentaire'] ?? '');
 
     // Gestion de la photo
     $photo_nom = $_POST['ancienne_photo'] ?? 'default.png';
@@ -80,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mkdir($target_dir, 0777, true);
             }
             
-            if (!empty($_POST['ancienne_photo']) && $_POST['ancienne_photo'] !== 'default.png' && $_POST['ancienne_photo'] !== 'default_avatar.png') {
+            if (!empty($_POST['ancienne_photo']) && !in_array($_POST['ancienne_photo'], ['default.png', 'default_avatar.png'])) {
                 $ancien_fichier = $target_dir . $_POST['ancienne_photo'];
                 if (file_exists($ancien_fichier)) {
                     @unlink($ancien_fichier);
@@ -115,62 +113,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             // --- GESTION DES ENFANTS ---
-            // On supprime les anciens liens de la table enfants pour reconstruire proprement
+            // Supprimer les anciennes liaisons de dépendance pour ce parent
             $stmt_delete = $pdo->prepare("DELETE FROM enfants WHERE membre_id = ?");
             $stmt_delete->execute([$id]);
 
             if (isset($_POST['enfants']) && is_array($_POST['enfants'])) {
-                // Ajout de la colonne enfant_membre_id dans la requête d'insertion
                 $sql_enfant = "INSERT INTO enfants (membre_id, enfant_membre_id, nom, prenoms, sexe, date_naissance) VALUES (?, ?, ?, ?, ?, ?)";
                 $stmt_enfant = $pdo->prepare($sql_enfant);
 
-                $sql_auto_membre = "INSERT INTO membres (matricule, nom, prenoms, sexe, date_naissance, qualite, groupe_action, statut_membre) 
+                $sql_insert_auto = "INSERT INTO membres (matricule, nom, prenoms, sexe, date_naissance, qualite, groupe_action, statut_membre) 
                                     VALUES (?, ?, ?, ?, ?, 'Enfant', 'Enfants', 'Actif')";
-                $stmt_auto_membre = $pdo->prepare($sql_auto_membre);
+                $stmt_insert_auto = $pdo->prepare($sql_insert_auto);
+
+                $sql_update_auto = "UPDATE membres SET nom = ?, prenoms = ?, sexe = ?, date_naissance = ? WHERE id = ?";
+                $stmt_update_auto = $pdo->prepare($sql_update_auto);
 
                 foreach ($_POST['enfants'] as $key => $enfant_data) {
                     $nom_enf = trim($enfant_data['nom'] ?? '');
-                    if (!empty($nom_enf)) {
-                        $prenom_enf = trim($enfant_data['prenoms'] ?? '');
-                        $sexe_enf = $enfant_data['sexe'] ?? 'Masculin';
-                        $enfant_dob = !empty($enfant_data['dob']) ? $enfant_data['dob'] : null;
-                        
-                        // Récupération de l'ID membre s'il existait déjà pour cet enfant
-                        $enfant_membre_id = !empty($enfant_data['enfant_membre_id']) ? (int)$enfant_data['enfant_membre_id'] : null;
+                    if (empty($nom_enf)) continue;
 
-                        // Si la case d'inscription est cochée
-                        if (isset($enfant_data['inscrire']) && $enfant_data['inscrire'] == '1') {
-                            
-                            // On vérifie si l'enfant n'existe pas déjà dans la table membres
+                    $prenom_enf = trim($enfant_data['prenoms'] ?? '');
+                    $sexe_enf = $enfant_data['sexe'] ?? 'Masculin';
+                    $enfant_dob = !empty($enfant_data['dob']) ? $enfant_data['dob'] : null;
+                    $enfant_membre_id = !empty($enfant_data['enfant_membre_id']) ? (int)$enfant_data['enfant_membre_id'] : null;
+
+                    // Si la case d'inscription est cochée
+                    if (isset($enfant_data['inscrire']) && $enfant_data['inscrire'] == '1') {
+                        if ($enfant_membre_id) {
+                            // Mettre à jour l'enfant autonome existant au cas où ses infos ont changé
+                            $stmt_update_auto->execute([$nom_enf, $prenom_enf, $sexe_enf, $enfant_dob, $enfant_membre_id]);
+                        } else {
+                            // Vérifier les doublons globaux avant création numérique
                             $stmt_check = $pdo->prepare("SELECT id FROM membres WHERE nom = ? AND prenoms = ? AND date_naissance = ?");
                             $stmt_check->execute([$nom_enf, $prenom_enf, $enfant_dob]);
                             $existing_membre = $stmt_check->fetch();
-                            
+
                             if (!$existing_membre) {
-                                // Génération du matricule et insertion globale
-                                $matricule_enfant = "E-" . time() . rand(10, 99);
-                                $stmt_auto_membre->execute([
-                                    $matricule_enfant, $nom_enf, $prenom_enf, $sexe_enf, $enfant_dob
-                                ]);
-                                // On récupère l'ID du membre enfant fraîchement créé
-                                $穩定_membre_id = $pdo->lastInsertId();
-                                $enfant_membre_id = (int)$穩定_membre_id;
+                                // Génération d'un matricule plus robuste (E + année + identifiant unique court)
+                                $matricule_enfant = "E-" . date('Y') . mt_rand(1000, 9999);
+                                $stmt_insert_auto->execute([$matricule_enfant, $nom_enf, $prenom_enf, $sexe_enf, $enfant_dob]);
+                                $enfant_membre_id = (int)$pdo->lastInsertId();
                             } else {
-                                // Si l'enfant existe déjà en tant que membre autonome, on récupère son ID existant
                                 $enfant_membre_id = (int)$existing_membre['id'];
                             }
                         }
-
-                        // Insertion du lien dans la table enfants (avec la clé étrangère enfant_membre_id)
-                        $stmt_enfant->execute([$id, $enfant_membre_id, $nom_enf, $prenom_enf, $sexe_enf, $enfant_dob]);
+                    } else {
+                        // Si décoché, on rompt le lien membre (la fiche autonome reste en base mais n'est plus liée à l'état "Inscrit" ici)
+                        $enfant_membre_id = null;
                     }
+
+                    // Insertion de la liaison
+                    $stmt_enfant->execute([$id, $enfant_membre_id, $nom_enf, $prenom_enf, $sexe_enf, $enfant_dob]);
                 }
             }
 
             $pdo->commit();
             $message = "La fiche du membre a été mise à jour avec succès !";
             
-            // Re-charger les données fraîches du membre après modification
+            if (function_exists('enregistrer_log')) {
+                $id_operateur = $_SESSION['user_id'] ?? null;
+                $details_log = "Mise à jour des informations du membre : $nom $prenoms (ID: #$id)";
+                $enregistrer = enregistrer_log($pdo, "Modification", $details_log, $id_operateur);
+            }
+            
+            // Re-charger les données
             $stmt = $pdo->prepare("SELECT * FROM membres WHERE id = ?");
             $stmt->execute([$id]);
             $membre = $stmt->fetch();
@@ -184,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 3. Récupération des enfants avec la jointure LEFT JOIN demandée
+// 3. Récupération des enfants
 $stmt_enfants = $pdo->prepare("
     SELECT e.*, m.matricule 
     FROM enfants e
@@ -212,7 +218,6 @@ require_once '../includes/header.php';
                 <input type="hidden" name="ancienne_photo" value="<?= htmlspecialchars($membre['photo'] ?? 'default.png') ?>">
 
                 <div class="row g-4">
-                    <!-- ÉTAT CIVIL -->
                     <div class="col-12 d-flex justify-content-between align-items-center">
                         <h5 class="text-primary fw-semibold mb-0"><i class="fa-solid fa-id-card me-2"></i>1. État civil & identification</h5>
                         <a href="index.php" class="btn btn-light btn-sm border">Retour</a>
@@ -269,7 +274,6 @@ require_once '../includes/header.php';
                         </div>
                     </div>
 
-                    <!-- ADRESSE & CONTACT -->
                     <div class="col-12 mt-5">
                         <h5 class="text-primary fw-semibold mb-0"><i class="fa-solid fa-map-location-dot me-2"></i>2. Adresse & Contact</h5>
                         <hr class="text-muted opacity-25 mt-2">
@@ -291,7 +295,6 @@ require_once '../includes/header.php';
                         <input type="text" name="quartier" class="form-control bg-light border-0" value="<?= htmlspecialchars($membre['quartier'] ?? '') ?>">
                     </div>
 
-                    <!-- SITUATION MATRIMONIALE -->
                     <div class="col-12 mt-5">
                         <h5 class="text-primary fw-semibold mb-0"><i class="fa-solid fa-heart me-2"></i>3. Situation de famille</h5>
                         <hr class="text-muted opacity-25 mt-2">
@@ -330,7 +333,6 @@ require_once '../includes/header.php';
                         <input type="number" name="nombre_enfants" id="nombre_enfants" class="form-control bg-light border-0" value="<?= (int)($membre['nombre_enfants'] ?? 0) ?>" min="0">
                     </div>
 
-                    <!-- SECTION DYNAMIQUE ENFANTS -->
                     <div class="col-12 mt-4">
                         <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
                             <h6 class="m-0 fw-bold text-dark"><i class="fa-solid fa-baby me-2"></i>Détails des enfants</h6>
@@ -339,7 +341,6 @@ require_once '../includes/header.php';
                         <div id="enfants_container" class="mt-3"></div>
                     </div>
 
-                    <!-- COMPOSANTE ECCLÉSIASTIQUE -->
                     <div class="col-12 mt-5">
                         <h5 class="text-primary fw-semibold mb-0"><i class="fa-solid fa-church me-2"></i>4. Situation ecclésiastique</h5>
                         <hr class="text-muted opacity-25 mt-2">
@@ -387,7 +388,7 @@ require_once '../includes/header.php';
                         </div>
                         <div class="form-check form-switch d-inline-block">
                             <input class="form-check-input" type="checkbox" name="engagement_moral" id="engagement" value="1" <?= (int)($membre['engagement_moral'] ?? 0) === 1 ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-semibold" for="engagement">Engagement moral signé</label>
+                            <label class="form-check-label fw-semibold" for="engagement">Engagement moral signed</label>
                         </div>
                     </div>
 
@@ -422,10 +423,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const sectionMariage = document.getElementById('section_mariage');
 
     function toggleMariage() {
-        sectionMariage.style.display = (selectStatut.value !== 'Célibataire') ? 'flex' : 'none';
+        if(sectionMariage) {
+            sectionMariage.style.display = (selectStatut.value !== 'Célibataire') ? 'flex' : 'none';
+        }
     }
-    selectStatut.addEventListener('change', toggleMariage);
-    toggleMariage();
+    if(selectStatut) {
+        selectStatut.addEventListener('change', toggleMariage);
+        toggleMariage();
+    }
 
     // 2. Preview Image
     const photoInput = document.getElementById('photo_input');
@@ -439,43 +444,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 3. Synchronisation dynamique des lignes d'enfants avec badge de matricule
+    // 3. Synchronisation dynamique des lignes d'enfants sécurisée contre les failles XSS en JS
     const inputNombreEnfants = document.getElementById('nombre_enfants');
     const containerEnfants = document.getElementById('enfants_container');
     
-    // Contient désormais e.* et m.matricule injectés de PHP
-    const enfantsExistants = <?= json_encode($enfants_existants) ?>;
+    // Échappement JSON sécurisé
+    const enfantsExistants = <?= json_encode($enfants_existants, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
     function synchroniserEnfants() {
-        const count = parseInt(inputNombreEnfants.value) || 0;
+        if(!containerEnfants || !inputNombreEnfants) return;
+
+        const count = Math.max(0, parseInt(inputNombreEnfants.value) || 0);
         const currentRows = containerEnfants.querySelectorAll('.enfant-row').length;
 
         if (count > currentRows) {
             for (let i = currentRows; i < count; i++) {
-                // Récupération de l'élément existant ou schéma par défaut
                 const dataEnfant = enfantsExistants[i] || { nom: '', prenoms: '', sexe: 'Masculin', date_naissance: '', enfant_membre_id: '', matricule: '' };
                 
-                // Préparation du badge de matricule
-                let badgeMatricule = '';
-                if(dataEnfant.matricule) {
-                    badgeMatricule = `<span class="badge bg-success ms-1">Matricule : ${dataEnfant.matricule}</span>`;
-                } else {
-                    badgeMatricule = `<span class="badge bg-secondary ms-1">Non inscrit comme membre</span>`;
-                }
+                let badgeMatricule = dataEnfant.matricule 
+                    ? `<span class="badge bg-success ms-1">Matricule : ${dataEnfant.matricule}</span>`
+                    : `<span class="badge bg-secondary ms-1">Non inscrit</span>`;
 
                 const row = document.createElement('div');
                 row.className = 'row g-2 mb-2 align-items-end border-bottom pb-3 enfant-row';
                 row.innerHTML = `
-                    <!-- Input caché pour préserver l'identifiant membre de l'enfant -->
                     <input type="hidden" name="enfants[${i}][enfant_membre_id]" value="${dataEnfant.enfant_membre_id || ''}">
                     
                     <div class="col-md-3">
                         <label class="small text-muted fw-bold">Nom de l'enfant #${i+1} ${badgeMatricule}</label>
-                        <input type="text" name="enfants[${i}][nom]" class="form-control form-control-sm border-0 bg-light" placeholder="Nom" value="${dataEnfant.nom}">
+                        <input type="text" name="enfants[${i}][nom]" class="form-control form-control-sm border-0 bg-light" placeholder="Nom" value="${escapeHtml(dataEnfant.nom)}">
                     </div>
                     <div class="col-md-3">
                         <label class="small text-muted fw-bold">Prénoms</label>
-                        <input type="text" name="enfants[${i}][prenoms]" class="form-control form-control-sm border-0 bg-light" placeholder="Prénoms" value="${dataEnfant.prenoms}">
+                        <input type="text" name="enfants[${i}][prenoms]" class="form-control form-control-sm border-0 bg-light" placeholder="Prénoms" value="${escapeHtml(dataEnfant.prenoms)}">
                     </div>
                     <div class="col-md-2">
                         <label class="small text-muted fw-bold">Sexe</label>
@@ -505,7 +506,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Petite fonction utilitaire pour sécuriser l'affichage dans le innerHTML du JS
+    function escapeHtml(string) {
+        if(!string) return '';
+        return String(string).replace(/[&<>"']/g, function (s) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s];
+        });
+    }
+
     inputNombreEnfants.addEventListener('input', synchroniserEnfants);
+    inputNombreEnfants.addEventListener('change', synchroniserEnfants);
     synchroniserEnfants();
 });
 </script>

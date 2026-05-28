@@ -4,13 +4,30 @@ require_once "../config/database.php";
 require_once "../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
-// Sélection des 50 dernières opérations de caisse avec jointures adaptées
-$sql = "SELECT o.*, m.nom, m.prenoms 
-        FROM mutuelle_operations o 
-        JOIN mutuelle_comptes mc ON o.compte_id = mc.id 
-        JOIN membres m ON mc.membre_id = m.id 
-        ORDER BY o.date_op DESC, o.id DESC LIMIT 50";
-$operations = $pdo->query($sql)->fetchAll();
+try {
+    // Sélection des 50 dernières opérations de caisse avec jointures adaptées
+    $sql = "SELECT o.*, m.nom, m.prenoms 
+            FROM mutuelle_operations o 
+            JOIN mutuelle_comptes mc ON o.compte_id = mc.id 
+            JOIN membres m ON mc.membre_id = m.id 
+            ORDER BY o.date_op DESC, o.id DESC LIMIT 50";
+    $operations = $pdo->query($sql)->fetchAll();
+
+    // Intégration du journal des logs à l'ouverture de la page d'audit
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log(
+            $pdo, 
+            'Consultation Journal', 
+            "Visualisation des 50 derniers mouvements de flux de la caisse mutuelle."
+        );
+    }
+} catch (PDOException $e) {
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Critique', "Échec de lecture du journal de caisse. Erreur : " . $e->getMessage());
+    }
+    echo "Erreur : " . $e->getMessage();
+    exit;
+}
 
 $page_title = "Journal de caisse de la mutuelle"; 
 require_once '../includes/header.php'; 
@@ -70,7 +87,7 @@ require_once '../includes/header.php';
                                         'RETRAIT'         => 'bg-danger-subtle text-danger border border-danger-subtle', 
                                         'PRET'            => 'bg-warning-subtle text-warning-emphasis border border-warning-subtle', 
                                         'REMBOURSEMENT'   => 'bg-info-subtle text-info-emphasis border border-info-subtle', 
-                                        'FRAIS_TENUE'     => 'bg-purple-subtle text-purple border border-purple-subtle', // Style personnalisé via CSS inline ou classe standard
+                                        'FRAIS_TENUE'     => 'bg-purple-subtle text-purple border border-purple-subtle', 
                                         'COMMISSION_PRET' => 'bg-primary-subtle text-primary border border-primary-subtle'
                                     ];
 
@@ -89,22 +106,21 @@ require_once '../includes/header.php';
                                     $label = isset($labels[$type]) ? $labels[$type] : $type;
                                 ?>
                                 <span class="badge <?= $class ?> uppercase-track text-uppercase fw-bold shadow-xs" style="font-size: 0.7rem; letter-spacing: 0.3px;">
-                                    <?= $label ?>
+                                    <?= htmlspecialchars($label) ?>
                                 </span>
                             </td>
                             <td class="text-end fw-bold <?php 
-                                // Vert pour tout ce qui rentre en caisse / Violet-bleu pour les frais mutuelle, rouge pour les sorties
                                 if (in_array($type, ['DEPOT', 'REMBOURSEMENT', 'FRAIS_TENUE', 'COMMISSION_PRET'])) {
                                     echo 'text-success';
                                 } else {
                                     echo 'text-danger';
                                 }
-                            ?>">
+                             ?>">
                                 <?= in_array($type, ['DEPOT', 'REMBOURSEMENT', 'FRAIS_TENUE', 'COMMISSION_PRET']) ? '+' : '-' ?>
                                 <?= number_format($op['montant'], 0, ',', ' ') ?> F
                             </td>
                             <td class="small text-muted italic-comment">
-                                <?= htmlspecialchars($op['commentaire']) ?>
+                                <?= htmlspecialchars($op['commentaire'] ?? '') ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>

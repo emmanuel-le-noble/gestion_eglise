@@ -4,8 +4,7 @@ require_once "../config/database.php";
 require_once "../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
-
-// Récupération des paramètres (Membre, Mois et Année)
+// Récupération et assainissement des paramètres (Membre, Mois et Année)
 $compte_id = isset($_GET['compte_id']) ? (int)$_GET['compte_id'] : null;
 $mois = isset($_GET['mois']) ? (int)$_GET['mois'] : (int)date('m');
 $annee = isset($_GET['annee']) ? (int)$_GET['annee'] : (int)date('Y');
@@ -28,7 +27,7 @@ $mois_fr = [
 
 if ($compte_id) {
     // 1. Informations du membre et du compte
-    $stmt = $pdo->prepare("SELECT m.*, c.date_adhesion, c.id as cid 
+    $stmt = $pdo->prepare("SELECT m.nom, m.prenoms, m.matricule, c.date_adhesion, c.id as cid 
                            FROM mutuelle_comptes c 
                            JOIN membres m ON c.membre_id = m.id 
                            WHERE c.id = ?");
@@ -36,15 +35,25 @@ if ($compte_id) {
     $resMembre = $stmt->fetch();
     if ($resMembre) {
         $membre = $resMembre;
+        
+        // Intégration du log de consultation d'audit
+        if (function_exists('enregistrer_log')) {
+            $nom_mois = $mois_fr[$mois] ?? $mois;
+            enregistrer_log(
+                $pdo, 
+                'Consultation Situation Mensuelle', 
+                "Consultation de la fiche financière du membre {$membre['matricule']} pour la période : {$nom_mois} {$annee}."
+            );
+        }
     }
 
-    // 2. Calcul des totaux du mois selon les nouveaux types de la base
+    // 2. Calcul des totaux du mois (Utilisation de COALESCE au lieu de IFNULL)
     $sqlStats = "SELECT 
-        IFNULL(SUM(CASE WHEN type_operation = 'DEPOT' THEN montant ELSE 0 END), 0) as total_depot,
-        IFNULL(SUM(CASE WHEN type_operation = 'RETRAIT' THEN montant ELSE 0 END), 0) as total_retrait,
-        IFNULL(SUM(CASE WHEN type_operation = 'FRAIS_TENUE' THEN montant ELSE 0 END), 0) as total_frais_tenue,
-        IFNULL(SUM(CASE WHEN type_operation = 'REMBOURSEMENT' THEN montant ELSE 0 END), 0) as total_rembourse,
-        IFNULL(SUM(CASE WHEN type_operation = 'PRET' THEN montant ELSE 0 END), 0) as total_prete
+        COALESCE(SUM(CASE WHEN type_operation = 'DEPOT' THEN montant ELSE 0 END), 0) as total_depot,
+        COALESCE(SUM(CASE WHEN type_operation = 'RETRAIT' THEN montant ELSE 0 END), 0) as total_retrait,
+        COALESCE(SUM(CASE WHEN type_operation = 'FRAIS_TENUE' THEN montant ELSE 0 END), 0) as total_frais_tenue,
+        COALESCE(SUM(CASE WHEN type_operation = 'REMBOURSEMENT' THEN montant ELSE 0 END), 0) as total_rembourse,
+        COALESCE(SUM(CASE WHEN type_operation = 'PRET' THEN montant ELSE 0 END), 0) as total_prete
         FROM mutuelle_operations 
         WHERE compte_id = ? AND MONTH(date_op) = ? AND YEAR(date_op) = ?";
     $stmtStats = $pdo->prepare($sqlStats);
@@ -53,21 +62,21 @@ if ($compte_id) {
     
     if ($resStats) {
         $statsMois = [
-            'total_depot' => $resStats['total_depot'],
-            'total_retrait' => $resStats['total_retrait'],
-            'total_frais_tenue' => $resStats['total_frais_tenue'],
-            'total_rembourse' => $resStats['total_rembourse'],
-            'total_prete' => $resStats['total_prete']
+            'total_depot' => floatval($resStats['total_depot']),
+            'total_retrait' => floatval($resStats['total_retrait']),
+            'total_frais_tenue' => floatval($resStats['total_frais_tenue']),
+            'total_rembourse' => floatval($resStats['total_rembourse']),
+            'total_prete' => floatval($resStats['total_prete'])
         ];
     }
 
-    // 3. Calcul du Solde Épargne Global & Reste à rembourser historique
+    // 3. Calcul du Solde Épargne Global & Reste à rembourser historique (Prêts vs Remboursements)
     $sqlGlobal = "SELECT 
-        IFNULL(SUM(CASE WHEN type_operation = 'DEPOT' THEN montant ELSE 0 END), 0) - 
-        IFNULL(SUM(CASE WHEN type_operation IN ('RETRAIT', 'FRAIS_TENUE') THEN montant ELSE 0 END), 0) as solde_total,
+        COALESCE(SUM(CASE WHEN type_operation = 'DEPOT' THEN montant ELSE 0 END), 0) - 
+        COALESCE(SUM(CASE WHEN type_operation IN ('RETRAIT', 'FRAIS_TENUE') THEN montant ELSE 0 END), 0) as solde_total,
         
-        (IFNULL(SUM(CASE WHEN type_operation = 'PRET' THEN montant ELSE 0 END), 0) - 
-         IFNULL(SUM(CASE WHEN type_operation = 'REMBOURSEMENT' THEN montant ELSE 0 END), 0)) as reste_a_rembourser
+        COALESCE(SUM(CASE WHEN type_operation = 'PRET' THEN montant ELSE 0 END), 0) - 
+        COALESCE(SUM(CASE WHEN type_operation = 'REMBOURSEMENT' THEN montant ELSE 0 END), 0) as reste_a_rembourser
         FROM mutuelle_operations WHERE compte_id = ?";
     
     $stmtGlobal = $pdo->prepare($sqlGlobal);
@@ -75,9 +84,11 @@ if ($compte_id) {
     $resGlobal = $stmtGlobal->fetch();
     
     if ($resGlobal) {
-        $soldeGlobal = $resGlobal['solde_total'] ?? 0;
-        $resteARembourserGlobal = $resGlobal['reste_a_rembourser'] ?? 0;
-        if ($resteARembourserGlobal < 0) { $resteARembourserGlobal = 0; }
+        $soldeGlobal = floatval($resGlobal['solde_total']);
+        $resteARembourserGlobal = floatval($resGlobal['reste_a_rembourser']);
+        if ($resteARembourserGlobal < 0) { 
+            $resteARembourserGlobal = 0; 
+        }
     }
 }
 
@@ -125,7 +136,7 @@ require_once '../includes/header.php';
                 <div class="col-md-3 d-flex gap-2">
                     <button type="submit" class="btn btn-outline-primary flex-grow-1"><i class="fa-solid fa-magnifying-glass me-1"></i> Filtrer</button>
                     <?php if ($compte_id && $membre): ?>
-                        <a href="rapport_fiche_mensuelle.php?compte_id=<?= $compte_id ?>" class="btn btn-success"><i class="fa fa-print"></i> Imprimer</a>
+                        <button onclick="window.print();" class="btn btn-success"><i class="fa fa-print"></i> Imprimer</button>
                     <?php endif; ?>
                 </div>
             </form>
@@ -159,7 +170,7 @@ require_once '../includes/header.php';
 
         <div class="text-center mb-5">
             <h4 class="fw-bold text-uppercase mb-1 text-decoration-underline">Fiche de Situation Financière</h4>
-            <span class="badge bg-secondary px-3 py-2 text-uppercase fs-6">Période : <?= $mois_fr[$mois] ?> <?= $annee ?></span>
+            <span class="badge bg-secondary px-3 py-2 text-uppercase fs-6">Période : <?= htmlspecialchars($mois_fr[$mois]) ?> <?= htmlspecialchars($annee) ?></span>
         </div>
 
         <div class="row g-4 mb-5">
@@ -200,8 +211,8 @@ require_once '../includes/header.php';
                     <tr>
                         <td class="py-4 text-success fw-bold fs-6">+ <?= number_format($statsMois['total_depot'], 0, ',', ' ') ?> F</td>
                         <td class="py-4 text-danger fw-bold fs-6">- <?= number_format($statsMois['total_retrait'], 0, ',', ' ') ?> F</td>
-                        <td class="py-4 text-purple fw-bold fs-6" style="color: #7b1fa2;">- <?= number_format($statsMois['total_frais_tenue'], 0, ',', ' ') ?> F</td>
-                        <td class="py-4 text-warning fw-bold fs-6 bg-light" style="color: #bc5100;">+ <?= number_format($statsMois['total_prete'], 0, ',', ' ') ?> F</td>
+                        <td class="py-4 fw-bold fs-6" style="color: #7b1fa2;">- <?= number_format($statsMois['total_frais_tenue'], 0, ',', ' ') ?> F</td>
+                        <td class="py-4 fw-bold fs-6 bg-light" style="color: #bc5100;">+ <?= number_format($statsMois['total_prete'], 0, ',', ' ') ?> F</td>
                         <td class="py-4 text-info fw-bold fs-6">+ <?= number_format($statsMois['total_rembourse'], 0, ',', ' ') ?> F</td>
                         <?php 
                         // Bilan net de l'épargne disponible du mois = dépôts - (retraits + frais de tenue)
@@ -239,7 +250,7 @@ require_once '../includes/header.php';
 <style>
 @media print {
     body { background-color: #ffffff !important; }
-    .no-print, header, footer, nav, .btn { display: none !important; }
+    .no-print, header, footer, nav, .btn, .card-body form { display: none !important; }
     .container { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
     #printableArea { border: none !important; box-shadow: none !important; padding: 0 !important; }
     .signature-zone { margin-top: 80px !important; }

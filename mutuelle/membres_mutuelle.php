@@ -4,13 +4,31 @@ require_once "../config/database.php";
 require_once "../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
+try {
+    $sql = "SELECT mc.*, m.nom, m.prenoms, m.matricule 
+            FROM mutuelle_comptes mc 
+            JOIN membres m ON mc.membre_id = m.id 
+            ORDER BY m.nom ASC";
+    $adhérents = $pdo->query($sql)->fetchAll();
 
-$sql = "SELECT mc.*, m.nom, m.prenoms, m.matricule FROM mutuelle_comptes mc JOIN membres m ON mc.membre_id = m.id ORDER BY m.nom ASC";
-$adhérents = $pdo->query($sql)->fetchAll();
+    // Journalisation de l'accès à la liste confidentielle des membres
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log(
+            $pdo, 
+            'Consultation Liste Adhérents', 
+            "Accès au répertoire des comptes d'adhérents de la mutuelle."
+        );
+    }
+} catch (PDOException $e) {
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Critique', "Échec de lecture de la liste des adhérents. Erreur : " . $e->getMessage());
+    }
+    echo "Erreur : " . $e->getMessage();
+    exit;
+}
 
 $page_title = "Membres de la mutuelle"; 
 require_once '../includes/header.php'; 
-
 ?>
 
 <div class="container mt-4">
@@ -51,13 +69,13 @@ require_once '../includes/header.php';
                     <?php else: ?>
                         <?php foreach($adhérents as $a): ?>
                         <tr>
-                            <td class="ps-3 fw-bold text-muted"><?= $a['matricule'] ?></td>
+                            <td class="ps-3 fw-bold text-muted"><?= htmlspecialchars($a['matricule']) ?></td> <!-- Correction XSS -->
                             <td class="fw-semibold text-dark"><?= htmlspecialchars($a['nom'] . ' ' . $a['prenoms']) ?></td>
                             <td class="small text-muted"><?= date('d/m/Y', strtotime($a['date_adhesion'])) ?></td>
                             <td class="text-end fw-bold text-success"><?= number_format($a['solde_tontine'], 0, ',', ' ') ?> F</td>
                             <td class="text-center">
                                 <span class="badge rounded-pill bg-<?= $a['statut'] == 'ACTIF' ? 'success' : 'danger' ?>-subtle text-<?= $a['statut'] == 'ACTIF' ? 'success' : 'danger' ?> fw-bold" style="font-size: 0.75rem;">
-                                    <?= $a['statut'] ?>
+                                    <?= htmlspecialchars($a['statut']) ?>
                                 </span>
                             </td>
                             <td class="text-center">

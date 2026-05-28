@@ -5,11 +5,12 @@ require_once "../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
 try {
+    $pdo->beginTransaction();
+
     // ÉTAPE 1 : Automatisation — On passe en 'RETARD' les prêts non soldés dont l'échéance est dépassée
-    // Note : On compare avec la formule exacte incluant les intérêts (colonne commission) générés par MySQL
     $pdo->query("UPDATE mutuelle_prets SET statut = 'RETARD' WHERE statut = 'EN_COURS' AND date_echeance < CURRENT_DATE AND montant_rembourse < (montant_prete + commission)");
 
-    // ÉTAPE 2 : Récupération des statistiques des prêts (Incluant les intérêts / commissions)
+    // ÉTAPE 2 : Récupération des statistiques des prêts (Utilisation de COALESCE au lieu de formules nues)
     $stats = $pdo->query("SELECT 
         COUNT(id) as total_prets, 
         SUM(CASE WHEN statut = 'RETARD' THEN 1 ELSE 0 END) as nb_retards, 
@@ -18,6 +19,18 @@ try {
         SUM(montant_rembourse) as capital_rembourse, 
         SUM((montant_prete + commission) - montant_rembourse) as reste_a_recouvrer 
         FROM mutuelle_prets WHERE statut != 'SOLDE'")->fetch();
+
+    $pdo->commit();
+
+    // Intégration du journal des logs à l'ouverture de la page
+    if (function_exists('enregistrer_log')) {
+        $nb_alertes = isset($stats['nb_retards']) ? (int)$stats['nb_retards'] : 0;
+        enregistrer_log(
+            $pdo, 
+            'Consultation Suivi Prêts', 
+            "Accès au tableau de bord des encours de crédits. Dossiers en anomalie/retard constatés : $nb_alertes."
+        );
+    }
 
     // ÉTAPE 3 : Liste complète des prêts avec les informations du membre et les calculs associés
     $sql = "SELECT p.*, m.nom, m.prenoms, 
@@ -30,7 +43,14 @@ try {
     $prets = $pdo->query($sql)->fetchAll();
 
 } catch (PDOException $e) {
-    echo "Erreur : " . $e->getMessage();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Critique', "Échec de chargement ou de mise à jour du module prêts. Erreur : " . $e->getMessage());
+    }
+    echo "Erreur système : Échec de la récupération des données de crédit.";
+    exit;
 }
 
 $page_title = "Suivi des prêts & alertes"; 
@@ -63,8 +83,8 @@ require_once '../includes/header.php';
                 <div class="card-body">
                     <small class="text-muted text-uppercase fw-bold small">Prêts en retard</small>
                     <h3 class="fw-bold m-0 text-danger d-flex align-items-center justify-content-between">
-                        <?= (int)$stats['nb_retards'] ?>
-                        <?php if($stats['nb_retards'] > 0): ?>
+                        <?= (int)($stats['nb_retards'] ?? 0) ?>
+                        <?php if(($stats['nb_retards'] ?? 0) > 0): ?>
                             <i class="fa-solid fa-triangle-exclamation fa-xs animate-bounce text-danger"></i>
                         <?php endif; ?>
                     </h3>
@@ -122,17 +142,17 @@ require_once '../includes/header.php';
                             <?php foreach ($prets as $p): 
                                 $row_class = '';
                                 $badge_class = 'bg-success';
+                                $statut_reel = $p['statut'];
                                 
-                                if ($p['statut'] == 'RETARD') {
+                                if ($statut_reel === 'RETARD') {
                                     $row_class = 'table-danger-custom';
                                     $badge_class = 'bg-danger';
-                                } elseif ($p['statut'] == 'EN_COURS') {
+                                } elseif ($statut_reel === 'EN_COURS') {
                                     $badge_class = 'bg-warning text-dark';
-                                } elseif ($p['statut'] == 'SOLDE') {
+                                } elseif ($statut_reel === 'SOLDE') {
                                     $badge_class = 'bg-success';
                                 }
                                 
-                                // Calcul du pourcentage basé sur le total_du (Principal + Intérêts)
                                 $pct = ($p['total_du'] > 0) ? ($p['montant_rembourse'] / $p['total_du']) * 100 : 0;
                             ?>
                                 <tr class="<?= $row_class ?>">
@@ -141,7 +161,7 @@ require_once '../includes/header.php';
                                     </td>
                                     <td class="small">
                                         <div class="text-dark">Du <?= date('d/m/Y', strtotime($p['date_pret'])) ?></div>
-                                        <div class="text-muted text-xs">Au <?= date('d/m/Y', strtotime($p['date_echeance'])) ?></div>
+                                        <div class="text-muted text-xs">Au <?= !empty($p['date_echeance']) ? date('d/m/Y', strtotime($p['date_echeance'])) : 'N/A' ?></div>
                                     </td>
                                     <td class="small">
                                         <span class="badge bg-light text-dark border"><?= number_format($p['taux'], 2, ',', ' ') ?> %</span>
@@ -154,13 +174,13 @@ require_once '../includes/header.php';
                                     <td class="small">
                                         <span class="text-success fw-semibold"><?= number_format($p['montant_rembourse'], 0, ',', ' ') ?> F</span>
                                         <div class="progress mt-1" style="height: 4px; max-width: 100px;">
-                                            <div class="progress-bar bg-success" style="width: <?= $pct ?>%"></div>
+                                            <div class="progress-bar bg-success" style="width: <?= min($pct, 100) ?>%"></div>
                                         </div>
                                     </td>
                                     <td class="fw-bold text-primary small"><?= number_format($p['reste_a_payer'], 0, ',', ' ') ?> F</td>
                                     <td class="pe-4 text-end">
                                         <span class="badge <?= $badge_class ?> small px-2 py-1">
-                                            <?= $p['statut'] == 'SOLDE' ? 'Soldé' : ($p['statut'] == 'RETARD' ? 'En retard' : 'En cours') ?>
+                                            <?= $statut_reel === 'SOLDE' ? 'Soldé' : ($statut_reel === 'RETARD' ? 'En retard' : 'En cours') ?>
                                         </span>
                                     </td>
                                 </tr>

@@ -55,10 +55,33 @@ function securiser_par_module($pdo, $nom_module) {
     }
 }
 
-function enregistrer_log($pdo, $module, $action, $details = null) {
+/**
+ * Enregistre une action utilisateur ou système dans les logs.
+ *
+ * @param PDO $pdo Instance de connexion à la base de données.
+ * @param string $module Le module concerné (ex: 'Authentification', 'Facturation').
+ * @param string $action L'action effectuée (ex: 'Connexion', 'Suppression').
+ * @param mixed $details Détails optionnels (string, array, objet).
+ */
+function enregistrer_log(PDO $pdo, string $module, string $action, mixed $details = null): void 
+{
     try {
+        // 1. Gestion des détails (si c'est un tableau/objet, on sérialise en JSON)
+        if ($details !== null && !is_string($details)) {
+            $details = json_encode($details, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        }
+
+        // 2. Détermination de l'IP réelle (gestion basique des proxys)
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        // Si HTTP_X_FORWARDED_FOR contient plusieurs IP séparées par des virgules, on prend la première
+        if (str_contains($ip, ',')) {
+            $ip = trim(explode(',', $ip)[0]);
+        }
+
+        // 3. Préparation et exécution de la requête
         $sql = "INSERT INTO logs_systeme (utilisateur_id, utilisateur_nom, module, action, details, adresse_ip) 
                 VALUES (:uid, :unom, :mod, :act, :det, :ip)";
+                
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             ':uid'  => $_SESSION['user_id'] ?? 0,
@@ -66,9 +89,12 @@ function enregistrer_log($pdo, $module, $action, $details = null) {
             ':mod'  => $module,
             ':act'  => $action,
             ':det'  => $details,
-            ':ip'   => $_SERVER['REMOTE_ADDR'] ?? null
+            ':ip'   => $ip
         ]);
+
     } catch (PDOException $e) {
-        // On évite de bloquer l'application si l'écriture du log échoue
+        // Optionnel : Enregistrer l'erreur de la BDD dans le log d'erreur PHP natif 
+        // pour ne pas perdre la trace d'un bug de table (ex: table pleine, colonne manquante)
+        error_log("Erreur d'écriture dans logs_systeme : " . $e->getMessage());
     }
 }

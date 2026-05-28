@@ -25,13 +25,26 @@ try {
         exit;
     }
 
-    // Récupération de l'historique des prêts (sans filtres de dates d'échéances obsolètes)
-    $prets = $pdo->prepare("SELECT * FROM mutuelle_prets WHERE compte_id = :id ORDER BY date_pret DESC");
+    // Journalisation de la consultation de la fiche financière de l'adhérent
+    if (function_exists('enregistrer_log')) {
+        $nom_complet = trim($compte['nom'] . ' ' . $compte['prenoms']);
+        enregistrer_log(
+            $pdo, 
+            'Consultation Profil Mutuelle', 
+            "Fiche financière consultée pour l'adhérent : $nom_complet (ID Compte: $compte_id)."
+        );
+    }
+
+    // Récupération de l'historique complet des engagements et prêts
+    $prets = $pdo->prepare("SELECT *, (montant_prete + commission) as total_du FROM mutuelle_prets WHERE compte_id = :id ORDER BY date_pret DESC");
     $prets->execute(['id' => $compte_id]);
     $liste_prets = $prets->fetchAll();
 
 } catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Critique', "Échec lors de la consultation du compte mutuelle ID $compte_id. Erreur : " . $e->getMessage());
+    }
+    die("Erreur de base de données : Échec de la récupération des données.");
 }
 
 $page_title = "Fiche compte adhérent"; 
@@ -55,6 +68,7 @@ require_once '../includes/header.php';
     </div>
 
     <div class="row g-4">
+        <!-- Volet Profil Membre -->
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body text-center pt-4">
@@ -88,6 +102,7 @@ require_once '../includes/header.php';
             </div>
         </div>
 
+        <!-- Volet Financier & Historique -->
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm bg-success text-white mb-4">
                 <div class="card-body p-4 d-flex justify-content-between align-items-center">
@@ -111,7 +126,7 @@ require_once '../includes/header.php';
                             <thead class="table-light small text-uppercase font-monospace text-secondary">
                                 <tr>
                                     <th class="ps-3">Date Prêt</th>
-                                    <th>Montant</th>
+                                    <th>Total Dû (+ Int.)</th>
                                     <th>Remboursé</th>
                                     <th>Reste dû</th>
                                     <th class="text-center">Statut</th>
@@ -124,23 +139,34 @@ require_once '../includes/header.php';
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($liste_prets as $p): 
-                                        $reste_a_payer = $p['montant_prete'] - $p['montant_rembourse'];
+                                        // Ajustement de la formule comptable pour intégrer les intérêts (commission)
+                                        $reste_a_payer = $p['total_du'] - $p['montant_rembourse'];
                                         
-                                        // Attribution dynamique des badges
+                                        // Attribution dynamique et sécurisée des badges de statuts
                                         $badge = 'bg-success';
-                                        if ($p['statut'] == 'RETARD') $badge = 'bg-danger';
-                                        if ($p['statut'] == 'EN_COURS') $badge = 'bg-warning text-dark';
+                                        $label_statut = 'Soldé';
+                                        
+                                        if ($p['statut'] === 'RETARD') {
+                                            $badge = 'bg-danger';
+                                            $label_statut = 'En retard';
+                                        } elseif ($p['statut'] === 'EN_COURS') {
+                                            $badge = 'bg-warning text-dark';
+                                            $label_statut = 'En cours';
+                                        }
                                     ?>
                                         <tr>
                                             <td class="ps-3 small text-muted"><?= date('d/m/Y', strtotime($p['date_pret'])) ?></td>
-                                            <td class="fw-bold small"><?= number_format($p['montant_prete'], 0, ',', ' ') ?> F</td>
+                                            <td class="fw-bold small">
+                                                <?= number_format($p['total_du'], 0, ',', ' ') ?> F
+                                                <div class="text-muted font-monospace text-xs fw-normal" style="font-size: 0.7rem;">Cap: <?= number_format($p['montant_prete'], 0, ',', ' ') ?> F</div>
+                                            </td>
                                             <td class="text-success small fw-semibold"><?= number_format($p['montant_rembourse'], 0, ',', ' ') ?> F</td>
                                             <td class="small fw-bold <?= $reste_a_payer > 0 ? 'text-danger' : 'text-muted' ?>">
-                                                <?= number_format($reste_a_payer, 0, ',', ' ') ?> F
+                                                <?= number_format(max(0, $reste_a_payer), 0, ',', ' ') ?> F
                                             </td>
                                             <td class="text-center">
-                                                <span class="badge <?= $badge ?> fw-bold shadow-xs" style="font-size: 0.7rem;">
-                                                    <?= $p['statut'] ?>
+                                                <span class="badge <?= $badge ?> fw-bold shadow-xs px-2 py-1" style="font-size: 0.7rem;">
+                                                    <?= $label_statut ?>
                                                 </span>
                                             </td>
                                         </tr>

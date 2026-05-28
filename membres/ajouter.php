@@ -100,6 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $membre_id = $pdo->lastInsertId();
+            $compteur_enfants_matricules = 0;
+            $liste_enfants_log = [];
 
             // 2. Traitement des enfants (Processus Familial Unique)
             if (isset($_POST['enfant_nom']) && is_array($_POST['enfant_nom'])) {
@@ -120,6 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $dob_enf = !empty($_POST['enfant_dob'][$key]) ? $_POST['enfant_dob'][$key] : null;
                         
                         $enfant_membre_id = null; // Par défaut, l'enfant n'est pas membre autonome (ex: nourrisson)
+                        $statut_matricule_log = "sans matricule";
 
                         // Si la case "Lui attribuer un matricule" a été cochée
                         if (isset($_POST['enfant_creer_matricule'][$key]) && $_POST['enfant_creer_matricule'][$key] === '1') {
@@ -140,7 +143,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                             // On récupère l'identifiant généré pour le lier au pivot
                             $enfant_membre_id = $pdo->lastInsertId();
+                            $statut_matricule_log = "avec matricule : " . $matricule_enfant;
+                            
                             $offset++;
+                            $compteur_enfants_matricules++;
                         }
 
                         // Création de la relation dans la table enfants
@@ -152,21 +158,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $sexe_enf,
                             $dob_enf
                         ]);
+
+                        // Enregistrer les infos pour le détail du log final
+                        $liste_enfants_log[] = $nom_enf . " " . $prenoms_enf . " (" . $statut_matricule_log . ")";
                     }
                 }
             }
 
             $pdo->commit();
+
+            // --- LOG DU SUCCÈS D'AJOUT ---
+            $details_success = [
+                'id_membre' => $membre_id,
+                'matricule' => $nouveauMatricule,
+                'nom_complet' => $nom . " " . $prenoms,
+                'qualite' => $qualite,
+                'nombre_enfants_declares' => $nombre_enfants,
+                'enfants_ajoutes' => $liste_enfants_log
+            ];
+            enregistrer_log($pdo, 'membres', 'Ajout réussi', $details_success);
+            // -----------------------------
+
             $message = "La famille a été inscrite avec succès ! Parent : <strong class='text-primary'>$nouveauMatricule</strong>";
-            
             $nouveauMatricule = genererMatricule($pdo, null); 
+
         } catch (PDOException $e) {
             $pdo->rollBack();
             $erreur = "Erreur lors de l'enregistrement : " . $e->getMessage();
+
+            // --- LOG DE L'ÉCHEC (Tentative échouée) ---
+            $details_erreur = [
+                'nom_tente' => $nom . " " . $prenoms,
+                'erreur_sql' => $e->getMessage()
+            ];
+            enregistrer_log($pdo, 'membres', 'Échec Ajout (Erreur SQL)', $details_erreur);
+            // ------------------------------------------
         }
     } else {
         if(empty($erreur)) {
             $erreur = "Veuillez remplir tous les champs obligatoires (*).";
+            
+            // --- LOG DE L'ÉCHEC (Champs requis manquants) ---
+            enregistrer_log($pdo, 'membres', 'Échec Ajout (Formulaire incomplet)', "Champs obligatoires manquants lors de la soumission.");
+            // ------------------------------------------------
         }
     }
 }
@@ -352,7 +386,7 @@ require_once '../includes/header.php';
                         </div>
                         <div class="form-check form-switch d-inline-block">
                             <input class="form-check-input" type="checkbox" name="engagement_moral" id="engagement" value="1">
-                            <label class="form-check-label fw-semibold" for="engagement">Engagement moral signed</label>
+                            <label class="form-check-label fw-semibold" for="engagement">Engagement moral signé</label>
                         </div>
                     </div>
 

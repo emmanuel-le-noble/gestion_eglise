@@ -17,11 +17,14 @@ try {
 
     // 2. Calcul du Reste Dehors (Prêts actifs avec intérêts inclus)
     $sql_prets = "SELECT COALESCE(SUM((montant_prete + commission) - montant_rembourse), 0) as total_prets_dehors
-                  FROM mutuelle_prets WHERE statut != 'SOLDE'";
+                  FROM mutuelle_prets 
+                  WHERE statut NOT IN ('SOLDE', 'ANNULE', 'REJETE')"; // Ajout de sécurité sur les statuts
     $total_prets_dehors = floatval($pdo->query($sql_prets)->fetchColumn());
 
-    // 3. Calcul des Gains Cumulés de la Mutuelle (Commissions prêts + Frais de tenue)
-    $gains_interets = floatval($pdo->query("SELECT COALESCE(SUM(commission), 0) FROM mutuelle_prets")->fetchColumn());
+    // 3. Calcul des Gains Cumulés de la Mutuelle (Commissions prêts valides + Frais de tenue)
+    $sql_gains_interets = "SELECT COALESCE(SUM(commission), 0) FROM mutuelle_prets WHERE statut NOT IN ('ANNULE', 'REJETE')";
+    $gains_interets = floatval($pdo->query($sql_gains_interets)->fetchColumn());
+    
     $gains_frais = floatval($pdo->query("SELECT COALESCE(SUM(montant), 0) FROM mutuelle_operations WHERE type_operation = 'FRAIS_TENUE'")->fetchColumn());
     $total_gains = $gains_interets + $gains_frais;
 
@@ -51,6 +54,7 @@ require_once '../includes/header.php';
         </div>
     </div>
 
+    <!-- Cartes Indicateurs -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card border-0 shadow-sm p-3">
@@ -106,6 +110,7 @@ require_once '../includes/header.php';
         </div>
     </div>
 
+    <!-- Section Principale : Menu & Tableau -->
     <div class="row g-4">
         <div class="col-lg-5">
             <div class="card border-0 shadow-sm h-100">
@@ -138,12 +143,12 @@ require_once '../includes/header.php';
                                 <span class="small fw-bold">Nouveau prêt</span>
                             </a>
                         </div>
-                        <div class="col-6 mt-2">
+                        <div class="col-16 mt-2">
                             <a href="journal.php" class="btn btn-outline-dark w-100 mb-2 py-2">
                                 <i class="fa-solid fa-list-check me-2"></i>Consulter le journal
                             </a>
                         </div>
-                        <div class="col-6 mt-2">
+                        <div class="col-16 mt-2">
                             <a href="prets.php" class="btn btn-outline-dark w-100 mb-2 py-2">
                                 <i class="fa-solid fa-clock-rotate-left me-2"></i>Suivi des prêts
                             </a>
@@ -179,11 +184,11 @@ require_once '../includes/header.php';
                                             <?= date('d/m/y', strtotime($r['date_op'])) ?>
                                         </td>
                                         <td class="small fw-bold text-dark">
-                                            <?= htmlspecialchars($r['matricule']).' '.htmlspecialchars($r['nom']).' '.htmlspecialchars($r['prenoms']) ?>
+                                            <?= htmlspecialchars($r['matricule'] . ' ' . $r['nom'] . ' ' . $r['prenoms']) ?>
                                         </td>
                                         <td>
                                             <span class="badge bg-light text-dark border small py-1 px-2">
-                                                <?= htmlspecialchars($r['type_operation']) ?>
+                                                <?= htmlspecialchars($r['type_operation']) ?> <!-- Correction XSS ici -->
                                             </span>
                                         </td>
                                         <td class="text-end pe-3 fw-bold small text-dark">

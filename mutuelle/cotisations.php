@@ -9,101 +9,121 @@ $show_receipt = false;
 $receipt_data = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $compte_id = (int)$_POST['compte_id'];
-    $montant_verse = isset($_POST['montant_tontine']) ? (float)$_POST['montant_tontine'] : 0; // On garde le name du input pour ne pas casser ton HTML de base
-    $date_op = $_POST['date_op'];
-    $user_id = $_SESSION['user_id'];
+    // 1. Protection CSRF : Validation du jeton de sécurité
+    if (!isset($_POST['csrf_token']) || !function_exists('verifier_token_csrf') || !verifier_token_csrf($_POST['csrf_token'])) {
+        $message = "<div class='alert alert-danger'><i class='fa-solid fa-ban me-2'></i>Erreur de sécurité : Action non autorisée (Échec CSRF).</div>";
+    } else {
+        $compte_id = (int)$_POST['compte_id'];
+        $montant_verse = isset($_POST['montant_tontine']) ? (float)$_POST['montant_tontine'] : 0; 
+        $date_op = $_POST['date_op'];
+        $user_id = $_SESSION['user_id'];
 
-    try {
-        if ($montant_verse <= 0) {
-            throw new Exception("Vous devez spécifier un montant supérieur à 0 pour effectuer un versement.");
-        }
-
-        $pdo->beginTransaction();
-
-        // 1. Récupérer les informations du compte et du membre avec verrouillage
-        $stmt_m = $pdo->prepare("SELECT m.nom, m.prenoms, m.matricule, mc.solde_tontine 
-                                 FROM mutuelle_comptes mc 
-                                 JOIN membres m ON mc.membre_id = m.id 
-                                 WHERE mc.id = ? FOR UPDATE");
-        $stmt_m->execute([$compte_id]);
-        $membre_info = $stmt_m->fetch();
-
-        if (!$membre_info) {
-            throw new Exception("Le compte de ce membre est introuvable ou inactif.");
-        }
-
-        // 2. Vérifier s'il y a un prêt actif pour appliquer la règle des 60/40
-        $stmt_pret = $pdo->prepare("SELECT id, montant_prete, montant_rembourse FROM mutuelle_prets WHERE compte_id = ? AND statut = 'EN_COURS' LIMIT 1 FOR UPDATE");
-        $stmt_pret->execute([$compte_id]);
-        $pret_actif = $stmt_pret->fetch();
-
-        $part_epargne = $montant_verse;
-        $part_remboursement = 0;
-        $pret_id = null;
-
-        if ($pret_actif) {
-            $pret_id = $pret_actif['id'];
-            // Application de la règle de ventilation : 60% remboursement / 40% épargne
-            $part_remboursement = $montant_verse * 0.60;
-            $part_epargne = $montant_verse * 0.40;
-
-            // Enregistrement de l'opération de remboursement (60%)
-            $stmt_remb = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'REMBOURSEMENT', ?, ?, ?, 'Remboursement Prêt (60%)')");
-            $stmt_remb->execute([$compte_id, $pret_id, $part_remboursement, $date_op, $user_id]);
-            $id_op_maitre = $pdo->lastInsertId(); // Servira de numéro de ticket
-
-            // Mise à jour du cumul remboursé sur le prêt
-            $upd_pret = $pdo->prepare("UPDATE mutuelle_prets SET montant_rembourse = montant_rembourse + ? WHERE id = ?");
-            $upd_pret->execute([$part_remboursement, $pret_id]);
-
-            // Vérification si le prêt est totalement soldé (en comptant la part remboursée actuelle)
-            // Note : le montant remboursé attendu correspond au montant prêté de base
-            $nouveau_cumul_remb = $pret_actif['montant_rembourse'] + $part_remboursement;
-            if ($nouveau_cumul_remb >= $pret_actif['montant_prete']) {
-                $upd_statut_pret = $pdo->prepare("UPDATE mutuelle_prets SET statut = 'SOLDE' WHERE id = ?");
-                $upd_statut_pret->execute([$pret_id]);
+        try {
+            if ($montant_verse <= 0) {
+                throw new Exception("Vous devez spécifier un montant supérieur à 0 pour effectuer un versement.");
             }
 
+            $pdo->beginTransaction();
+
+            // Récupérer les informations du compte et du membre avec verrouillage
+            $stmt_m = $pdo->prepare("SELECT m.id as membre_real_id, m.nom, m.prenoms, m.matricule, mc.solde_tontine 
+                                     FROM mutuelle_comptes mc 
+                                     JOIN membres m ON mc.membre_id = m.id 
+                                     WHERE mc.id = ? FOR UPDATE");
+            $stmt_m->execute([$compte_id]);
+            $membre_info = $stmt_m->fetch();
+
+            if (!$membre_info) {
+                throw new Exception("Le compte de ce membre est introuvable ou inactif.");
+            }
+
+            // Vérifier s'il y a un prêt actif pour appliquer la règle des 60/40
+            $stmt_pret = $pdo->prepare("SELECT id, montant_prete, montant_rembourse FROM mutuelle_prets WHERE compte_id = ? AND statut = 'EN_COURS' LIMIT 1 FOR UPDATE");
+            $stmt_pret->execute([$compte_id]);
+            $pret_actif = $stmt_pret->fetch();
+
+            $part_epargne = $montant_verse;
+            $part_remboursement = 0;
+            $pret_id = null;
+
+            if ($pret_actif) {
+                $pret_id = $pret_actif['id'];
+                // Application de la règle de ventilation : 60% remboursement / 40% épargne
+                $part_remboursement = $montant_verse * 0.60;
+                $part_epargne = $montant_verse * 0.40;
+
+                // Enregistrement de l'opération de remboursement (60%)
+                $stmt_remb = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'REMBOURSEMENT', ?, ?, ?, 'Remboursement Prêt (60%)')");
+                $stmt_remb->execute([$compte_id, $pret_id, $part_remboursement, $date_op, $user_id]);
+                $id_op_maitre = $pdo->lastInsertId(); 
+
+                // Mise à jour du cumul remboursé sur le prêt
+                $upd_pret = $pdo->prepare("UPDATE mutuelle_prets SET montant_rembourse = montant_rembourse + ? WHERE id = ?");
+                $upd_pret->execute([$part_remboursement, $pret_id]);
+
+                // Vérification si le prêt est totalement soldé
+                $nouveau_cumul_remb = $pret_actif['montant_rembourse'] + $part_remboursement;
+                if ($nouveau_cumul_remb >= $pret_actif['montant_prete']) {
+                    $upd_statut_pret = $pdo->prepare("UPDATE mutuelle_prets SET statut = 'SOLDE' WHERE id = ?");
+                    $upd_statut_pret->execute([$pret_id]);
+                }
+            }
+
+            // Enregistrement de la part Épargne (100% ou 40%)
+            $stmt_epargne = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'DEPOT', ?, ?, ?, ?)");
+            $commentaire_epargne = $pret_actif ? "Cotisation Épargne (40%)" : "Cotisation Épargne (100%)";
+            $stmt_epargne->execute([$compte_id, $pret_id, $part_epargne, $date_op, $user_id]);
+            
+            if (!isset($id_op_maitre)) {
+                $id_op_maitre = $pdo->lastInsertId();
+            }
+
+            // Mise à jour du solde de la tontine
+            $upd_compte = $pdo->prepare("UPDATE mutuelle_comptes SET solde_tontine = solde_tontine + ? WHERE id = ?");
+            $upd_compte->execute([$part_epargne, $compte_id]);
+
+            $pdo->commit();
+
+            // 2. Intégration du Log en cas de succès
+            if (function_exists('enregistrer_log')) {
+                $details_log = "Cotisation de " . number_format($montant_verse, 0, ',', ' ') . " FCFA pour le membre {$membre_info['matricule']}. ";
+                if ($pret_actif) {
+                    $details_log .= "Ventilation 60/40 appliquée : {$part_remboursement} FCFA affectés au remboursement du prêt ID #{$pret_id} et {$part_epargne} FCFA affectés à l'épargne.";
+                } else {
+                    $details_log .= "100% du versement affectés à l'épargne.";
+                }
+                enregistrer_log($pdo, 'Cotisation Mutuelle', $details_log);
+            }
+
+            // Préparation des données du reçu thermique
+            $receipt_data = [
+                'ticket_no' => $id_op_maitre,
+                'matricule' => $membre_info['matricule'],
+                'nom_complet' => $membre_info['nom'] . ' ' . $membre_info['prenoms'],
+                'date' => $date_op,
+                'total_general' => $montant_verse,
+                'part_epargne' => $part_epargne,
+                'part_remboursement' => $part_remboursement,
+                'tontine_nouveau_solde' => $membre_info['solde_tontine'] + $part_epargne,
+                'has_pret' => $pret_actif ? true : false
+            ];
+            $show_receipt = true;
+
+            $message = "<div class='alert alert-success shadow-sm d-flex align-items-center justify-content-between mb-0'>
+                            <span><i class='fa-solid fa-circle-check me-2'></i>Versement enregistré avec succès (" . number_format($montant_verse, 0, ',', ' ') . " F CFA) !</span>
+                            <button onclick='imprimerTicket()' class='btn btn-light btn-sm border shadow-sm'><i class='fa-solid fa-print me-1'></i> Réimprimer le reçu</button>
+                        </div>";
+
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            
+            // Log de l'échec d'opération
+            if (function_exists('enregistrer_log')) {
+                enregistrer_log($pdo, 'Erreur Cotisation', "Échec de l'enregistrement de la cotisation pour le compte ID #{$compte_id}. Erreur : " . $e->getMessage());
+            }
+            
+            $message = "<div class='alert alert-danger'><i class='fa-solid fa-triangle-exclamation me-2'></i>Erreur : " . $e->getMessage() . "</div>";
         }
-
-        // 3. Enregistrement de la part Épargne (100% ou 40%)
-        $stmt_epargne = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'DEPOT', ?, ?, ?, ?)");
-        $commentaire_epargne = $pret_actif ? "Cotisation Épargne (40%)" : "Cotisation Épargne (100%)";
-        $stmt_epargne->execute([$compte_id, $pret_id, $part_epargne, $date_op, $user_id]);
-        
-        if (!isset($id_op_maitre)) {
-            $id_op_maitre = $pdo->lastInsertId();
-        }
-
-        // Mise à jour du solde de la tontine
-        $upd_compte = $pdo->prepare("UPDATE mutuelle_comptes SET solde_tontine = solde_tontine + ? WHERE id = ?");
-        $upd_compte->execute([$part_epargne, $compte_id]);
-
-        $pdo->commit();
-
-        // Préparation des données du reçu thermique
-        $receipt_data = [
-            'ticket_no' => $id_op_maitre,
-            'matricule' => $membre_info['matricule'],
-            'nom_complet' => $membre_info['nom'] . ' ' . $membre_info['prenoms'],
-            'date' => $date_op,
-            'total_general' => $montant_verse,
-            'part_epargne' => $part_epargne,
-            'part_remboursement' => $part_remboursement,
-            'tontine_nouveau_solde' => $membre_info['solde_tontine'] + $part_epargne,
-            'has_pret' => $pret_actif ? true : false
-        ];
-        $show_receipt = true;
-
-        $message = "<div class='alert alert-success shadow-sm d-flex align-items-center justify-content-between mb-0'>
-                        <span><i class='fa-solid fa-circle-check me-2'></i>Versement enregistré avec succès (" . number_format($montant_verse, 0, ',', ' ') . " F CFA) !</span>
-                        <button onclick='imprimerTicket()' class='btn btn-light btn-sm border shadow-sm'><i class='fa-solid fa-print me-1'></i> Réimprimer le reçu</button>
-                    </div>";
-
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $message = "<div class='alert alert-danger'><i class='fa-solid fa-triangle-exclamation me-2'></i>Erreur : " . $e->getMessage() . "</div>";
     }
 }
 
@@ -131,6 +151,10 @@ require_once '../includes/header.php';
                     <?php endif; ?>
                     
                     <form method="POST">
+                        <?php if (function_exists('generer_token_csrf')): ?>
+                            <input type="hidden" name="csrf_token" value="<?= generer_token_csrf(); ?>">
+                        <?php endif; ?>
+
                         <div class="mb-3">
                             <label class="small fw-bold mb-1 text-muted">Membre de la mutuelle</label>
                             <select name="compte_id" class="form-select select2" required>
@@ -200,7 +224,6 @@ require_once '../includes/header.php';
 
         <div style="border-bottom:1px dotted #000; margin-top:5px; margin-bottom:5px;"></div>
 
-        <!-- Section ventilation dynamique -->
         <div style="display:flex; justify-content:between; margin-bottom:3px;">
             <span>• Affectation Épargne <?= $receipt_data['has_pret'] ? '(40%)' : '(100%)' ?> :</span>
             <span style="font-weight:bold;"><?= number_format($receipt_data['part_epargne'], 0, ',', ' ') ?> F</span>

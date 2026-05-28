@@ -4,40 +4,61 @@ require_once "../config/database.php";
 require_once "../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
-
 $message = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $compte_id = $_POST['compte_id'];
-    $montant = (float)$_POST['montant'];
-    $taux = (float)$_POST['taux'];
-    $date_pret = $_POST['date_pret'];
+    $compte_id = filter_input(INPUT_POST, 'compte_id', FILTER_VALIDATE_INT);
+    $montant = (float)($_POST['montant'] ?? 0);
+    $taux = (float)($_POST['taux'] ?? 5.00);
+    $date_pret = $_POST['date_pret'] ?? date('Y-m-d');
     $user_id = $_SESSION['user_id'];
 
-    // Calcul de la commission des 5% collectée en espèces
-    $commission = ($montant * $taux) / 100;
+    if (!$compte_id || $montant <= 0) {
+        $message = "<div class='alert alert-danger'><i class='fa-solid fa-triangle-exclamation me-2'></i>Erreur : Les informations saisies sont incorrectes. Le montant doit être supérieur à 0.</div>";
+    } else {
+        // Calcul de la commission des 5% collectée en espèces
+        $commission = ($montant * $taux) / 100;
 
-    try {
-        $pdo->beginTransaction();
+        try {
+            $pdo->beginTransaction();
 
-        // 1. Créer la fiche de prêt sans les dates d'échéances (Remboursement lié aux cotisations)
-        $stmt = $pdo->prepare("INSERT INTO mutuelle_prets (compte_id, montant_prete, taux, commission_payee, date_pret, statut) VALUES (?, ?, ?, 'OUI', ?, 'EN_COURS')");
-        $stmt->execute([$compte_id, $montant, $taux, $date_pret]);
-        $pret_id = $pdo->lastInsertId();
+            // 1. Créer la fiche de prêt sans les dates d'échéances (Remboursement lié aux cotisations)
+            $stmt = $pdo->prepare("INSERT INTO mutuelle_prets (compte_id, montant_prete, taux, commission_payee, date_pret, statut) VALUES (?, ?, ?, 'OUI', ?, 'EN_COURS')");
+            $stmt->execute([$compte_id, $montant, $taux, $date_pret]);
+            $pret_id = $pdo->lastInsertId();
 
-        // 2. Flux de sortie : Enregistrer la remise de l'intégralité du prêt au membre
-        $stmt_op = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'PRET', ?, ?, ?, 'Octroi de prêt (Remboursement automatique via tontine 60%)')");
-        $stmt_op->execute([$compte_id, $pret_id, $montant, $date_pret, $user_id]);
+            // 2. Flux de sortie : Enregistrer la remise de l'intégralité du prêt au membre
+            $stmt_op = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'PRET', ?, ?, ?, 'Octroi de prêt (Remboursement automatique via tontine 60%)')");
+            $stmt_op->execute([$compte_id, $pret_id, $montant, $date_pret, $user_id]);
 
-        // 3. Flux d'entrée : Enregistrer l'encaissement des 5% de commission pour la caisse de la mutuelle
-        $stmt_comm = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'COMMISSION_PRET', ?, ?, ?, 'Commission de prêt de 5% perçue en espèces')");
-        $stmt_comm->execute([$compte_id, $pret_id, $commission, $date_pret, $user_id]);
+            // 3. Flux d'entrée : Enregistrer l'encaissement des 5% de commission pour la caisse de la mutuelle
+            $stmt_comm = $pdo->prepare("INSERT INTO mutuelle_operations (compte_id, pret_id, type_operation, montant, date_op, utilisateur_id, commentaire) VALUES (?, ?, 'COMMISSION_PRET', ?, ?, ?, 'Commission de prêt de 5% perçue en espèces')");
+            $stmt_comm->execute([$compte_id, $pret_id, $commission, $date_pret, $user_id]);
 
-        $pdo->commit();
-        $message = "<div class='alert alert-success shadow-sm'><i class='fa-solid fa-circle-check me-2'></i>Prêt débloqué avec succès ! Commission de " . number_format($commission, 0, ',', ' ') . " F perçue. Le remboursement s'appliquera automatiquement à hauteur de 60% sur les prochaines cotisations.</div>";
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $message = "<div class='alert alert-danger'><i class='fa-solid fa-triangle-exclamation me-2'></i>Erreur : " . $e->getMessage() . "</div>";
+            // Récupération des informations du membre pour le fichier de log d'audit
+            $stmt_info = $pdo->prepare("SELECT m.nom, m.prenoms FROM mutuelle_comptes mc JOIN membres m ON mc.membre_id = m.id WHERE mc.id = ?");
+            $stmt_info->execute([$compte_id]);
+            $beneficiaire = $stmt_info->fetch();
+            $nom_complet = $beneficiaire ? $beneficiaire['nom'] . ' ' . $beneficiaire['prenoms'] : "Inconnu";
+
+            // Journalisation de la validation du prêt
+            if (function_exists('enregistrer_log')) {
+                enregistrer_log(
+                    $pdo, 
+                    'Octroi Prêt', 
+                    "Prêt ID #$pret_id d'un montant de " . number_format($montant, 0, ',', ' ') . " F octroyé à ($nom_complet). Commission de " . number_format($commission, 0, ',', ' ') . " F perçue."
+                );
+            }
+
+            $pdo->commit();
+            $message = "<div class='alert alert-success shadow-sm'><i class='fa-solid fa-circle-check me-2'></i>Prêt débloqué avec succès ! Commission de " . number_format($commission, 0, ',', ' ') . " F perçue. Le remboursement s'appliquera automatiquement à hauteur de 60% sur les prochaines cotisations.</div>";
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            if (function_exists('enregistrer_log')) {
+                enregistrer_log($pdo, 'Erreur Transactionnelle', "Échec de l'octroi du prêt pour le compte ID $compte_id. Erreur : " . $e->getMessage());
+            }
+            $message = "<div class='alert alert-danger'><i class='fa-solid fa-triangle-exclamation me-2'></i>Erreur système : Échec de l'opération financière.</div>";
+        }
     }
 }
 
@@ -57,7 +78,7 @@ require_once '../includes/header.php';
                     <a href="index.php" class="btn btn-light btn-sm border">Retour</a>
                 </div>
                 <div class="card-body p-4">
-                    <?= $message ?>
+                    <?= $message // Contient du HTML contrôlé et sécurisé en amont ou des messages statiques ?>
                     
                     <form method="POST">
                         <div class="mb-3">
@@ -65,8 +86,8 @@ require_once '../includes/header.php';
                             <select name="compte_id" class="form-select select2" required>
                                 <option value="">-- Sélectionner le membre --</option>
                                 <?php foreach($membres as $m): ?>
-                                    <option value="<?= $m['id'] ?>">
-                                        <?= $m['matricule'] .' - '. htmlspecialchars($m['nom'] . ' ' . $m['prenoms']) ?> (Épargne : <?= number_format($m['solde_tontine'], 0, ',', ' ') ?> F)
+                                    <option value="<?= (int)$m['id'] ?>">
+                                        <?= htmlspecialchars($m['matricule']) .' - '. htmlspecialchars($m['nom'] . ' ' . $m['prenoms']) ?> (Épargne : <?= number_format($m['solde_tontine'], 0, ',', ' ') ?> F)
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -126,7 +147,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     montantInput.addEventListener('input', calculerCommission);
-    // Calcul initial au cas où
     calculerCommission();
 });
 </script>

@@ -21,7 +21,7 @@ try {
                    WHERE statut != 'SOLDE'";
     $total_dettes = floatval($pdo->query($sql_dettes)->fetchColumn());
 
-    // 3. NOUVEAU : Calcul des Gains Générés par la Mutuelle
+    // 3. Calcul des Gains Générés par la Mutuelle
     // Gain A : Les intérêts/commissions cumulés sur les prêts
     $sql_gains_interets = "SELECT COALESCE(SUM(commission), 0) FROM mutuelle_prets";
     $gains_interets = floatval($pdo->query($sql_gains_interets)->fetchColumn());
@@ -36,7 +36,20 @@ try {
     // La liquidité totale en caisse correspond à l'épargne disponible augmentée des gains propres de la mutuelle
     $total_caisse = $total_tontine + $total_gains;
 
+    // 4. Intégration du Log : Enregistrement de la consultation du bilan
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log(
+            $pdo, 
+            'Consultation Bilan', 
+            "Visualisation du bilan financier global de la mutuelle. Caisse théorique : " . number_format($total_caisse, 0, ',', ' ') . " FCFA."
+        );
+    }
+
 } catch (PDOException $e) {
+    // Log de l'erreur technique avant l'arrêt du script
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Critique', "Échec de chargement du bilan financier. Erreur : " . $e->getMessage());
+    }
     echo "Erreur : " . $e->getMessage();
     exit;
 }
@@ -59,7 +72,6 @@ require_once '../includes/header.php';
         </div>
     </div>
 
-    <!-- Indicateurs rapides (Cartes) -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card border-0 shadow-sm bg-primary text-white">
@@ -95,9 +107,7 @@ require_once '../includes/header.php';
         </div>
     </div>
 
-    <!-- Analyses détaillées -->
     <div class="row g-4">
-        <!-- Résumé de trésorerie -->
         <div class="col-md-7">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white py-3 border-0">
@@ -129,7 +139,6 @@ require_once '../includes/header.php';
             </div>
         </div>
 
-        <!-- Analyse des risques et ratios -->
         <div class="col-md-5">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white py-3 border-0">

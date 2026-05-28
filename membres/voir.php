@@ -2,6 +2,7 @@
 // eglise_db/membres/voir.php
 require_once "../config/database.php";
 require_once "../includes/session.php";
+require_once "../includes/helpers.php"; // Contient vos helpers de sécurité et enregistrer_log()
 
 // Toutes les pages du dossier membres contiendront cette ligne :
 securiser_par_module($pdo, 'membres');
@@ -34,6 +35,16 @@ $target_dir = realpath(__DIR__ . "/../assets/uploads/membres") . "/";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
+    // SÉCURISATION CSRF GLOBALE POUR TOUS LES POSTS DE CETTE PAGE
+    $token_recu = $_POST['csrf_token'] ?? '';
+    if (function_exists('verifier_token_csrf') && !verifier_token_csrf($token_recu)) {
+        $_SESSION['flash_error'] = "Action non autorisée (Échec CSRF).";
+        header("Location: voir.php?id=" . $id);
+        exit();
+    }
+    
+    $id_operateur = $_SESSION['user_id'] ?? null;
+
     // CAS 1 : ENREGISTRER UN MARIAGE
     if (isset($_POST['action_mariage'])) {
         $statut_matrimonial = "Marié(e)";
@@ -53,7 +64,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $date_effet = $date_mariage ?: date('Y-m-d');
                 $motif = "Célébration de mariage avec " . $nom_conjoint . " à " . ($lieu_mariage ?: "l'Église") . ".";
                 $stmt_hist = $pdo->prepare("INSERT INTO historique_membre (membre_id, type_evenement, date_evenement, description, utilisateur_id ) VALUES (?, 'Mariage', ?, ?, ?)");
-                $stmt_hist->execute([$id, $date_effet, $motif, $_SESSION['user_id'] ?? null]);
+                $stmt_hist->execute([$id, $date_effet, $motif, $id_operateur]);
+
+                // 3. Enregistrement dans les logs système globaux
+                if (function_exists('enregistrer_log')) {
+                    enregistrer_log($pdo, "Modification", "Mariage enregistré pour le membre ID #$id avec $nom_conjoint.", $id_operateur);
+                }
 
                 $pdo->commit();
                 
@@ -96,7 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $motif = "Naissance d'" . $genre_bebe . " nommé(e) " . $bebe_nom . " " . $bebe_prenoms . ".";
                 
                 $stmt_hist = $pdo->prepare("INSERT INTO historique_membre (membre_id, type_evenement, date_evenement, description, utilisateur_id ) VALUES (?, 'Naissance', ?, ?, ?)");
-                $stmt_hist->execute([$id, $date_effet, $motif, $_SESSION['user_id'] ?? null]);
+                $stmt_hist->execute([$id, $date_effet, $motif, $id_operateur]);
+
+                // 4. Enregistrement dans les logs système globaux
+                if (function_exists('enregistrer_log')) {
+                    enregistrer_log($pdo, "Modification", "Déclaration de naissance liée au membre ID #$id (Enfant: $bebe_nom $bebe_prenoms).", $id_operateur);
+                }
 
                 $pdo->commit();
                 
@@ -131,7 +152,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 2. Inscription propre dans la table historique_membre
                 $description_mvt = "Changement de statut vers [" . $nouveau_statut . "]. Motif : " . $motif_depart;
                 $stmt_hist = $pdo->prepare("INSERT INTO historique_membre (membre_id, type_evenement, date_evenement, description, utilisateur_id) VALUES (?, 'Mouvement', ?, ?, ?)");
-                $stmt_hist->execute([$id, $date_mouvement, $description_mvt, $_SESSION['user_id'] ?? null]);
+                $stmt_hist->execute([$id, $date_mouvement, $description_mvt, $id_operateur]);
+
+                // 3. Enregistrement dans les logs système globaux
+                if (function_exists('enregistrer_log')) {
+                    enregistrer_log($pdo, "Modification", "Changement de statut ecclésiastique pour le membre ID #$id vers '$nouveau_statut'.", $id_operateur);
+                }
 
                 $pdo->commit();
                 
@@ -213,6 +239,11 @@ require_once '../includes/header.php';
 
             <a href="modifier.php?id=<?= (int)$m['id'] ?>" class="btn btn-warning fw-bold"><i class="fa fa-edit me-1"></i> Modifier</a>
             <a href="fiche.php?id=<?= (int)$m['id'] ?>" class="btn btn-outline-dark"><i class="fa fa-print me-1"></i> Imprimer</a>
+            
+            <form id="delete-form-<?= (int)$m['id'] ?>" action="supprimer.php" method="POST" style="display:none;">
+                <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
+                <input type="hidden" name="csrf_token" value="<?= function_exists('generer_token_csrf') ? generer_token_csrf() : '' ?>">
+            </form>
             <button onclick="confirmDeletion(<?= (int)$m['id'] ?>)" class="btn btn-danger fw-bold"><i class="fa fa-trash me-1"></i> Supprimer</button>
         </div>
     </div>
@@ -298,8 +329,6 @@ require_once '../includes/header.php';
         </div>
 
         <div class="col-lg-8">
-            
-
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white py-3 border-0">
                     <h6 class="mb-0 fw-bold text-primary"><i class="fa fa-church me-2"></i> Vie spirituelle & engagement</h6>
@@ -447,16 +476,10 @@ require_once '../includes/header.php';
                 </div>
             </div>
             <?php endif; ?>
-
         </div>
     </div>
 </div>
 
-<!-- =========================================================================
-MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
-========================================================================= -->
-
-<!-- Modal Mariage -->
 <div class="modal fade" id="modalMariage" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -466,6 +489,7 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
             </div>
             <form action="voir.php?id=<?= (int)$id ?>" method="POST">
                 <input type="hidden" name="action_mariage" value="1">
+                <input type="hidden" name="csrf_token" value="<?= function_exists('generer_token_csrf') ? generer_token_csrf() : '' ?>">
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-secondary">Nom & Prénoms complets du Conjoint(e) <span class="text-danger">*</span></label>
@@ -489,7 +513,6 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
     </div>
 </div>
 
-<!-- Modal Naissance -->
 <div class="modal fade" id="modalNaissance" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -499,6 +522,7 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
             </div>
             <form action="voir.php?id=<?= (int)$id ?>" method="POST">
                 <input type="hidden" name="action_declaration_naissance" value="1">
+                <input type="hidden" name="csrf_token" value="<?= function_exists('generer_token_csrf') ? generer_token_csrf() : '' ?>">
                 <div class="modal-body p-4">
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-secondary">Nom de famille de l'enfant <span class="text-danger">*</span></label>
@@ -531,25 +555,25 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
     </div>
 </div>
 
-<!-- Modal Départ / Mouvement -->
 <div class="modal fade" id="modalDepart" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold"><i class="fa-solid fa-door-open me-2"></i>Signaler un Départ / Changement de statut</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title fw-bold"><i class="fa-solid fa-door-open me-2"></i>Signaler un Mouvement / Mutation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form action="voir.php?id=<?= (int)$id ?>" method="POST">
                 <input type="hidden" name="action_depart" value="1">
+                <input type="hidden" name="csrf_token" value="<?= function_exists('generer_token_csrf') ? generer_token_csrf() : '' ?>">
                 <div class="modal-body p-4">
                     <div class="mb-3">
-                        <label class="form-label small fw-bold text-secondary">Nouvelle situation ecclésiastique <span class="text-danger">*</span></label>
+                        <label class="form-label small fw-bold text-secondary">Nouveau Statut de Situation <span class="text-danger">*</span></label>
                         <select name="statut_membre" class="form-select" required>
-                            <option value="Départ">Départ (Déménagement / Changement d'Église)</option>
-                            <option value="Inactif">Inactif</option>
-                            <option value="Voyage">En Voyage / Mutation Temporaire</option>
+                            <option value="Muté">Muté / Transféré</option>
+                            <option value="Suspendu">Suspendu</option>
                             <option value="Excommunié">Excommunié</option>
-                            <option value="Décédé">Décédé(e)</option>
+                            <option value="Décédé">Décédé</option>
+                            <option value="Inactif">Inactif / Autre motif</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -557,13 +581,13 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
                         <input type="date" name="date_mouvement" class="form-control" value="<?= date('Y-m-d') ?>">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-bold text-secondary">Motif précis & Observations du secrétariat <span class="text-danger">*</span></label>
-                        <textarea name="motif_depart" class="form-control" rows="3" placeholder="Ex: Mutation professionnelle à Kara. Demande de lettre de transfert acceptée." required></textarea>
+                        <label class="form-label small fw-bold text-secondary">Motif explicatif précis <span class="text-danger">*</span></label>
+                        <textarea name="motif_depart" class="form-control" rows="3" placeholder="Ex: Changement de province professionnelle ou démission volontaire..." required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer bg-light border-0">
                     <button type="button" class="btn btn-secondary btn-sm rounded-2" data-bs-dismiss="modal">Annuler</button>
-                    <button type="submit" class="btn btn-dark btn-sm fw-bold rounded-2 shadow-sm">Archiver le changement</button>
+                    <button type="submit" class="btn btn-warning btn-sm fw-bold text-dark rounded-2 shadow-sm">Acter le Mouvement</button>
                 </div>
             </form>
         </div>
@@ -571,11 +595,11 @@ MODALS DES PROCESSUS SITUATIONNELS (BOOSTRAP 5)
 </div>
 
 <script>
-    function confirmDeletion(id) {
-        if (confirm("Êtes-vous sûr de vouloir supprimer définitivement ce membre ainsi que tout son historique familial ? Cette action est totalement irréversible.")) {
-            window.location.href = "supprimer.php?id=" + id;
-        }
+function confirmDeletion(id) {
+    if (confirm("Êtes-vous certain de vouloir supprimer définitivement ce membre ? Cette action supprimera également ses liaisons enfants de manière irréversible.")) {
+        document.getElementById('delete-form-' + id).submit();
     }
+}
 </script>
 
 <?php require_once '../includes/footer.php'; ?>
