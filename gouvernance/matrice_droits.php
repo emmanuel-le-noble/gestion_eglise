@@ -138,7 +138,7 @@ require_once '../includes/header.php';
                 </div>
             </div>
             <div class="card-footer bg-white text-end py-3">
-                <button type="submit" name="sauvegarder_droits" class="btn btn-primary fw-bold shadow-sm px-4">
+                <button type="submit" name="sauvegarder_droits" class="btn btn-primary shadow-sm px-4">
                     <i class="fa-solid fa-shield-check me-2"></i>Enregistrer les autorisations
                 </button>
             </div>

@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             if ($montant_verse <= 0) {
-                throw new Exception("Vous devez spécifier un montant supérieur à 0 pour effectuer un versement.");
+                throw new Exception("Le montant de la mise journalière doit être supérieur à 0 pour effectuer un versement.");
             }
 
             $pdo->beginTransaction();
@@ -117,7 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $pdo->rollBack();
             
-            // Log de l'échec d'opération
             if (function_exists('enregistrer_log')) {
                 enregistrer_log($pdo, 'Erreur Cotisation', "Échec de l'enregistrement de la cotisation pour le compte ID #{$compte_id}. Erreur : " . $e->getMessage());
             }
@@ -127,8 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Récupérer les membres actifs de la mutuelle
-$membres = $pdo->query("SELECT mc.id, m.nom, m.prenoms, m.matricule FROM mutuelle_comptes mc JOIN membres m ON mc.membre_id = m.id WHERE mc.statut = 'ACTIF' ORDER BY m.nom ASC")->fetchAll();
+// Récupérer les membres actifs de la mutuelle + leur mise_journaliere
+$membres = $pdo->query("SELECT mc.id, mc.mise_journaliere, m.nom, m.prenoms, m.matricule 
+                        FROM mutuelle_comptes mc 
+                        JOIN membres m ON mc.membre_id = m.id 
+                        WHERE mc.statut = 'ACTIF' 
+                        ORDER BY m.nom ASC")->fetchAll();
 
 $page_title = "Enregistrer une cotisation"; 
 require_once '../includes/header.php'; 
@@ -157,17 +160,19 @@ require_once '../includes/header.php';
 
                         <div class="mb-3">
                             <label class="small fw-bold mb-1 text-muted">Membre de la mutuelle</label>
-                            <select name="compte_id" class="form-select select2" required>
+                            <select name="compte_id" id="compte_id" class="form-select select2" required>
                                 <option value="">-- Sélectionner le membre --</option>
                                 <?php foreach($membres as $m): ?>
-                                    <option value="<?= $m['id'] ?>"><?= $m['matricule'] ?> - <?= htmlspecialchars($m['nom'] . ' ' . $m['prenoms']) ?></option>
+                                    <option value="<?= $m['id'] ?>" data-mise="<?= (float)$m['mise_journaliere'] ?>">
+                                        <?= $m['matricule'] ?> - <?= htmlspecialchars($m['nom'] . ' ' . $m['prenoms']) ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="mb-3">
-                            <label class="small fw-bold mb-1 text-success">Montant versé (FCFA)</label>
-                            <input type="number" name="montant_tontine" class="form-control form-control-lg border-success border-opacity-50 fw-bold text-success" placeholder="Ex: 5000" min="50" step="50" required>
+                            <label class="small fw-bold mb-1 text-success">Montant de la mise (FCFA) - <span class="text-muted fw-normal">Mise journalière</span></label>
+                            <input type="number" name="montant_tontine" id="montant_tontine" class="form-control border-success bg-light border-opacity-50 text-success" readonly placeholder="Sélectionnez le membre" required>
                         </div>
 
                         <div class="mb-4">
@@ -192,63 +197,80 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectMembre = document.getElementById('compte_id');
+    const inputMontant = document.getElementById('montant_tontine');
+
+    if (selectMembre && inputMontant) {
+        // Fonction pour mettre à jour la mise journalière
+        function majMiseJournaliere() {
+            const optionSelectionnee = selectMembre.options[selectMembre.selectedIndex];
+            if (optionSelectionnee && optionSelectionnee.value !== "") {
+                // Récupération de la valeur stockée dans l'attribut data-mise
+                const mise = optionSelectionnee.getAttribute('data-mise');
+                inputMontant.value = mise;
+            } else {
+                inputMontant.value = "";
+            }
+        }
+
+        // Écouter les changements sur le Select (Fonctionne également avec Select2 si déclenché correctement)
+        selectMembre.addEventListener('change', majMiseJournaliere);
+
+        // Pour gérer la compatibilité si vous utilisez l'extension jQuery Select2
+        if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
+            jQuery('#compte_id').on('select2:select', function (e) {
+                majMiseJournaliere();
+            });
+        }
+    }
+});
+</script>
+
 <?php if ($show_receipt): ?>
 <div id="thermal-receipt" style="display:none;">
     <div style="font-family:'Courier New', Courier, monospace; width: 80mm; padding: 3mm; color:#000; font-size:12px;">
         <div style="text-align:center; font-weight:bold; font-size:14px; text-transform:uppercase; margin-bottom:2px;">MUTUELLE DE CRÉDIT & ENTRAIDE</div>
         <div style="text-align:center; font-size:11px; margin-bottom:12px;">Guichet d'enregistrement Caisse</div>
-        
         <div style="border-bottom:1px dashed #000; margin-bottom:8px;"></div>
-        
         <div>
             <b>REÇU N° :</b> COT-<?= str_pad($receipt_data['ticket_no'], 6, '0', STR_PAD_LEFT) ?><br>
             <b>Date :</b> <?= date('d/m/Y à H:i', strtotime($receipt_data['date'] . ' ' . date('H:i:s'))) ?><br>
             <b>Opérateur :</b> <?= htmlspecialchars($_SESSION['user_name'] ?? 'Caissier') ?>
         </div>
-        
         <div style="border-bottom:1px dashed #000; margin-bottom:8px;"></div>
-        
         <div style="margin-bottom:12px;">
             <b>Adhérent :</b> <?= htmlspecialchars($receipt_data['nom_complet']) ?><br>
             <b>Matricule :</b> <?= htmlspecialchars($receipt_data['matricule']) ?>
         </div>
-        
         <div style="border-bottom:1px dashed #000; margin-bottom:5px;"></div>
         <div style="font-weight:bold; text-align:center; margin-bottom:5px; font-size:11px;">DÉTAIL DU VERSEMENT</div>
         <div style="border-bottom:1px dashed #000; margin-bottom:8px;"></div>
-        
         <div style="display:flex; justify-content:between; margin-bottom:3px;">
             <span>Montant Global Déposé :</span>
             <span style="font-weight:bold;"><?= number_format($receipt_data['total_general'], 0, ',', ' ') ?> F</span>
         </div>
-
         <div style="border-bottom:1px dotted #000; margin-top:5px; margin-bottom:5px;"></div>
-
         <div style="display:flex; justify-content:between; margin-bottom:3px;">
             <span>• Affectation Épargne <?= $receipt_data['has_pret'] ? '(40%)' : '(100%)' ?> :</span>
             <span style="font-weight:bold;"><?= number_format($receipt_data['part_epargne'], 0, ',', ' ') ?> F</span>
         </div>
-
         <?php if ($receipt_data['has_pret']): ?>
             <div style="display:flex; justify-content:between; margin-bottom:3px;">
                 <span>• Affectation Prêt (60%) :</span>
                 <span style="font-weight:bold;"><?= number_format($receipt_data['part_remboursement'], 0, ',', ' ') ?> F</span>
             </div>
         <?php endif; ?>
-
         <div style="font-size:11px; color:#555; text-align:right; margin-top:5px; margin-bottom:6px; font-style:italic;">
             (Nouveau solde épargne : <?= number_format($receipt_data['tontine_nouveau_solde'], 0, ',', ' ') ?> F)
         </div>
-        
         <div style="border-bottom:1px dashed #000; margin-top:5px; margin-bottom:5px;"></div>
-        
         <div style="background-color:#eee; padding:6px; text-align:center; font-size:14px; font-weight:bold; margin-bottom:15px;">
-            TOTAL NET NETTOYÉ :<br>
+            TOTAL NET :<br>
             <?= number_format($receipt_data['total_general'], 0, ',', ' ') ?> F CFA
         </div>
-        
         <div style="border-bottom:1px dashed #000; margin-bottom:10px;"></div>
-        
         <div style="text-align:center; font-size:10px; font-style:italic;">
             Merci pour votre régularité.<br>
             Document édité automatiquement par le système.
@@ -260,23 +282,19 @@ require_once '../includes/header.php';
 function imprimerTicket() {
     var rawHtml = document.getElementById('thermal-receipt').innerHTML;
     var printWindow = window.open('', '', 'height=600,width=420');
-    
     printWindow.document.write('<html><head><title>Ticket de Caisse - Cotisation</title>');
     printWindow.document.write('<style>body{margin:0;padding:0;} @media print { body { width: 80mm; } div { display:block; } span { display:inline-block; } }</style>');
     printWindow.document.write('<style>div{box-sizing:border-box;} span:nth-child(2){float:right;}</style>');
     printWindow.document.write('</head><body>');
     printWindow.document.write(rawHtml);
     printWindow.document.write('</body></html>');
-    
     printWindow.document.close();
     printWindow.focus();
-    
     setTimeout(function(){
         printWindow.print();
         printWindow.close();
     }, 400);
 }
-
 window.onload = function() {
     imprimerTicket();
 };

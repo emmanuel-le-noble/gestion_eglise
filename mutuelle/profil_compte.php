@@ -36,7 +36,7 @@ try {
     }
 
     // Récupération de l'historique complet des engagements et prêts
-    $prets = $pdo->prepare("SELECT *, (montant_prete + commission) as total_du FROM mutuelle_prets WHERE compte_id = :id ORDER BY date_pret DESC");
+    $prets = $pdo->prepare("SELECT *, (montant_prete) as total_du FROM mutuelle_prets WHERE compte_id = :id ORDER BY date_pret DESC");
     $prets->execute(['id' => $compte_id]);
     $liste_prets = $prets->fetchAll();
 

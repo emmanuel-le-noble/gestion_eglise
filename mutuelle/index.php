@@ -16,7 +16,7 @@ try {
     $epargne_globale = floatval($stats_base['epargne_globale']);
 
     // 2. Calcul du Reste Dehors (Prêts actifs avec intérêts inclus)
-    $sql_prets = "SELECT COALESCE(SUM((montant_prete + commission) - montant_rembourse), 0) as total_prets_dehors
+    $sql_prets = "SELECT COALESCE(SUM((montant_prete) - montant_rembourse), 0) as total_prets_dehors
                   FROM mutuelle_prets 
                   WHERE statut NOT IN ('SOLDE', 'ANNULE', 'REJETE')"; // Ajout de sécurité sur les statuts
     $total_prets_dehors = floatval($pdo->query($sql_prets)->fetchColumn());
@@ -102,7 +102,7 @@ require_once '../includes/header.php';
                         <i class="fa-solid fa-hand-holding-dollar fa-xl"></i>
                     </div>
                     <div>
-                        <small class="text-muted small mb-1 d-block text-uppercase fw-semibold">Prêts actifs (+ Int.)</small>
+                        <small class="text-muted small mb-1 d-block text-uppercase fw-semibold">Prêts actifs</small>
                         <h4 class="fw-bold mb-0 text-warning"><?= number_format($total_prets_dehors, 0, ',', ' ') ?> F</h4>
                     </div>
                 </div>

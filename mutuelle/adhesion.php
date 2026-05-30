@@ -1,7 +1,7 @@
 <?php
 // eglise_db/mutuelle/adhesion.php
-require_once "../config/database.php";
-require_once "../includes/session.php";
+require_once __DIR__ . "/../config/database.php";
+require_once __DIR__ . "/../includes/session.php";
 securiser_par_module($pdo, 'mutuelle');
 
 $message = "";
@@ -11,11 +11,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || !function_exists('verifier_token_csrf') || !verifier_token_csrf($_POST['csrf_token'])) {
         $message = "<div class='alert alert-danger'><i class='fa-solid fa-ban me-2'></i>Erreur de sécurité : Action non autorisée (Échec CSRF).</div>";
     } else {
-        $membre_id = $_POST['membre_id'];
-        $date_adhesion = $_POST['date_adhesion'];
-        $mise_journaliere = (float)$_POST['mise_journaliere'];
+        $membre_id = isset($_POST['membre_id']) ? (int)$_POST['membre_id'] : 0;
+        $date_adhesion = isset($_POST['date_adhesion']) ? $_POST['date_adhesion'] : date('Y-m-d');
+        $mise_journaliere = isset($_POST['mise_journaliere']) ? (float)$_POST['mise_journaliere'] : 0.0;
 
-        if ($mise_journaliere >= 0) {
+        $date_valid = DateTime::createFromFormat('Y-m-d', $date_adhesion) !== false;
+
+        if ($membre_id > 0 && $date_valid && $mise_journaliere >= 0) {
             try {
                 // Insertion incluant la mise journalière
                 $sql = "INSERT INTO mutuelle_comptes (membre_id, date_adhesion, `mise_journaliere`) VALUES (?, ?, ?)";
@@ -32,15 +34,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $message = "<div class='alert alert-success shadow-sm'><i class='fa-solid fa-circle-check me-2'></i>Le membre a été inscrit à la mutuelle avec succès !</div>";
+                
+                // Optionnel : Vider le $_POST pour réinitialiser le formulaire après un succès
+                $_POST = [];
+                
             } catch (PDOException $e) {
-                // Log de l'échec technique (optionnel mais recommandé pour le débug)
+                // Log de l'échec technique
                 if (function_exists('enregistrer_log')) {
                     enregistrer_log($pdo, 'Erreur Mutuelle', "Échec de l'inscription à la mutuelle pour le membre ID #{$membre_id}. Erreur : " . $e->getMessage());
                 }
-                $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Erreur : Ce membre est peut-être déjà inscrit ou les données sont invalides.</div>";
+                
+                // Vérification si c'est un doublon (Code SQLSTATE 23000)
+                if ($e->getCode() === '23000') {
+                    $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Erreur : Ce membre est déjà inscrit à la mutuelle.</div>";
+                } else {
+                    $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Une erreur technique est survenue lors de l'inscription.</div>";
+                }
             }
         } else {
-            $message = "<div class='alert alert-warning'><i class='fa-solid fa-triangle-exclamation me-2'></i>La mise journalière doit être un montant positif ou égal à zéro.</div>";
+            $message = "<div class='alert alert-warning'><i class='fa-solid fa-triangle-exclamation me-2'></i>Entrées invalides : vérifiez le membre, la date ou la mise journalière.</div>";
         }
     }
 }
@@ -50,10 +62,19 @@ $sql_membres = "SELECT id, matricule, nom, prenoms
                 FROM membres 
                 WHERE id NOT IN (SELECT membre_id FROM mutuelle_comptes) 
                 ORDER BY nom ASC";
-$membres_disponibles = $pdo->query($sql_membres)->fetchAll();
+$membres_disponibles = [];
+try {
+    $membres_disponibles = $pdo->query($sql_membres)->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $membres_disponibles = [];
+    if (function_exists('enregistrer_log')) {
+        enregistrer_log($pdo, 'Erreur Mutuelle', 'Impossible de récupérer la liste des membres : ' . $e->getMessage());
+    }
+    $message = "<div class='alert alert-danger'><i class='fa-solid fa-circle-exclamation me-2'></i>Impossible de récupérer la liste des membres.</div>";
+}
 
 $page_title = "Adhésion à la mutuelle"; 
-require_once '../includes/header.php'; 
+require_once __DIR__ . '/../includes/header.php'; 
 ?>
 
 <div class="container mt-4">
@@ -76,8 +97,8 @@ require_once '../includes/header.php';
                             <select name="membre_id" class="form-select select2" required>
                                 <option value="">-- Choisir un membre --</option>
                                 <?php foreach($membres_disponibles as $m): ?>
-                                    <option value="<?= $m['id'] ?>">
-                                        <?= $m['matricule'] ?> - <?= htmlspecialchars($m['nom']) ?> <?= htmlspecialchars($m['prenoms']) ?>
+                                    <option value="<?= $m['id'] ?>" <?= (isset($_POST['membre_id']) && $_POST['membre_id'] == $m['id']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($m['matricule']) ?> - <?= htmlspecialchars($m['nom']) ?> <?= htmlspecialchars($m['prenoms']) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -88,7 +109,7 @@ require_once '../includes/header.php';
                             <div class="col-md-6">
                                 <label class="small fw-bold mb-2">Mise journalière fixe (FCFA)</label>
                                 <div class="input-group input-group-sm">
-                                    <input type="number" step="50" name="mise_journaliere" id="mise_journaliere" class="form-control" placeholder="Ex: 500" required>
+                                    <input type="number" step="50" name="mise_journaliere" id="mise_journaliere" class="form-control" placeholder="Ex: 500" required value="<?= isset($_POST['mise_journaliere']) ? htmlspecialchars($_POST['mise_journaliere']) : '' ?>">
                                     <span class="input-group-text bg-light text-muted fw-bold">F</span>
                                 </div>
                             </div>
@@ -108,7 +129,7 @@ require_once '../includes/header.php';
 
                         <div class="mb-4">
                             <label class="small fw-bold mb-2">Date d'adhésion</label>
-                            <input type="date" name="date_adhesion" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>" required>
+                            <input type="date" name="date_adhesion" class="form-control form-control-sm" value="<?= isset($_POST['date_adhesion']) ? htmlspecialchars($_POST['date_adhesion']) : date('Y-m-d') ?>" required>
                         </div>
 
                         <div class="d-grid gap-2">
@@ -138,13 +159,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const inputFrais = document.getElementById('frais_estimation');
 
     if(inputMise && inputFrais) {
-        inputMise.addEventListener('input', function() {
-            const mise = parseFloat(this.value) || 0;
+        // Fonction de calcul isolée
+        function calculerFrais() {
+            const mise = parseFloat(inputMise.value) || 0;
             const frais = mise / 2; 
             inputFrais.value = frais % 1 === 0 ? frais : frais.toFixed(2);
-        });
+        }
+
+        // Écouter les changements de saisie
+        inputMise.addEventListener('input', calculerFrais);
+
+        // Exécuter immédiatement au chargement (au cas où le champ contient déjà une valeur)
+        calculerFrais();
     }
 });
 </script>
 
-<?php require_once '../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

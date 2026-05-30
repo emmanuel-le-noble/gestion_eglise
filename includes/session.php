@@ -23,6 +23,28 @@ function require_login() {
     }
 }
 
+function generer_token_csrf() {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    // Si le jeton n'existe pas en session, on le crée
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verifier_token_csrf($token_recu) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    // On compare le jeton reçu du formulaire avec celui en session
+    if (isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token_recu)) {
+        return true;
+    }
+    return false;
+}
+
 /**
  * Sécurise une page en fonction du module auquel elle appartient.
  * 

@@ -17,7 +17,7 @@ try {
         SUM(montant_prete) as capital_prete, 
         SUM(commission) as total_commissions,
         SUM(montant_rembourse) as capital_rembourse, 
-        SUM((montant_prete + commission) - montant_rembourse) as reste_a_recouvrer 
+        SUM((montant_prete) - montant_rembourse) as reste_a_recouvrer 
         FROM mutuelle_prets WHERE statut != 'SOLDE'")->fetch();
 
     $pdo->commit();
@@ -34,8 +34,8 @@ try {
 
     // ÉTAPE 3 : Liste complète des prêts avec les informations du membre et les calculs associés
     $sql = "SELECT p.*, m.nom, m.prenoms, 
-            (p.montant_prete + p.commission) as total_du,
-            ((p.montant_prete + p.commission) - p.montant_rembourse) as reste_a_payer 
+            (p.montant_prete) as total_du,
+            ((p.montant_prete) - p.montant_rembourse) as reste_a_payer 
             FROM mutuelle_prets p 
             JOIN mutuelle_comptes mc ON p.compte_id = mc.id 
             JOIN membres m ON mc.membre_id = m.id 
@@ -110,7 +110,7 @@ require_once '../includes/header.php';
         <div class="col-md-3">
             <div class="card border-0 shadow-sm bg-dark text-white">
                 <div class="card-body">
-                    <small class="text-white-50 text-uppercase fw-bold small">Reste dehors (+ Intérêts)</small>
+                    <small class="text-white-50 text-uppercase fw-bold small">Reste dehors</small>
                     <h4 class="fw-bold m-0 text-warning"><?= number_format($stats['reste_a_recouvrer'] ?? 0, 0, ',', ' ') ?> F</h4>
                 </div>
             </div>
