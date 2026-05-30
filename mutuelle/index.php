@@ -47,7 +47,11 @@ require_once '../includes/header.php';
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="fw-bold text-dark m-0">Mutuelle & Tontine</h2>
-        <div>
+        <div class="d-flex gap-2">
+            <!-- Bouton Administration Ajouté ici -->
+            <a href="admin.php" class="btn btn-outline-dark shadow-sm">
+                <i class="fa-solid fa-cogs me-2"></i>Administration
+            </a>
             <a href="bilan.php" class="btn btn-dark shadow-sm">
                 <i class="fa-solid fa-chart-pie me-2"></i>Bilan global
             </a>
@@ -188,7 +192,7 @@ require_once '../includes/header.php';
                                         </td>
                                         <td>
                                             <span class="badge bg-light text-dark border small py-1 px-2">
-                                                <?= htmlspecialchars($r['type_operation']) ?> <!-- Correction XSS ici -->
+                                                <?= htmlspecialchars($r['type_operation']) ?>
                                             </span>
                                         </td>
                                         <td class="text-end pe-3 fw-bold small text-dark">
